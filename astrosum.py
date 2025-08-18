@@ -27,10 +27,12 @@ def extract_fits_metadata(fits_path):
             date_obs = hdr.get("DATE-OBS", None)
             filter_name = hdr.get("FILTER", "Unknown")
             exptime = hdr.get("EXPTIME", 0)
+            imagetype = hdr.get("IMAGETYP", "Unknown")
             
             if not date_obs:
                 return None
-
+            if imagetype != "LIGHT":
+                return None
             # Normalize date format to YYYY-MM-DD
             try:
                 obs_date = datetime.fromisoformat(date_obs.split("T")[0]).strftime("%Y-%m-%d")
