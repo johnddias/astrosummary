@@ -11,7 +11,9 @@ FILTER_ID_MAP = {
     "R": 3007,
     "Ha": 4657,
     "OIII": 4746,
+    "Oiii": 4746,
     "SII": 4838,
+    "Sii": 4838,
     "L": 3012,
     "G": 3011,
     "B": 3008
@@ -74,7 +76,7 @@ def write_astrobin_csv(summary, output_path):
                 })
 
 if __name__ == "__main__":
-    data_dir = Path(r"y:\M101FITS")  # <-- Change this to your input directory
+    data_dir = Path(r"R:\__astrophotography\Deep Sky\SFRO Data\Sh-2 124")  # <-- Change this to your input directory
 
     files = [f for ext in ("*.fits", "*.fit") for f in data_dir.rglob(ext)]
 
