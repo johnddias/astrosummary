@@ -1,0 +1,8 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Dark app baseline */
+:root {
+  color-scheme: dark;
+}
