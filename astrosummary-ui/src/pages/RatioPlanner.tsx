@@ -1,34 +1,16 @@
 import { useMemo, useState } from 'react'
 import { useApp } from '../context/AppContext'
-import { scanFrames } from '../lib/scan'
 import { totalsByTarget, computeEqualGoal, planToTotalHours, balanceDeficits } from '../lib/analysis'
 import ChartCard from '../components/ChartCard'
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Legend } from 'recharts'
-import { PRESETS } from '../lib/presets'
-
-type RatioSource = 'Equal' | 'Preset' | 'Custom'
+type RatioSource = 'Equal' | 'Custom'
 
 export default function RatioPlanner() {
-  const { frames, setFrames, desiredHours, setDesiredHours, recurse, backendPath } = useApp()
+  const { frames, desiredHours, setDesiredHours } = useApp()
   const [ratioSource, setRatioSource] = useState<RatioSource>('Equal')
-  const [presetName, setPresetName] = useState<string>(Object.keys(PRESETS)[0])
   const [customText, setCustomText] = useState<string>('')
-  const [status, setStatus] = useState<string>('')
-  const [scanning, setScanning] = useState<boolean>(false)
-
-  const onScan = async () => {
-    setScanning(true)
-    try {
-      const { frames: lf, info } = await scanFrames({ backendPath, recurse })
-      setFrames(lf)
-      setStatus(info)
-    } finally {
-      setScanning(false)
-    }
-  }
 
   const goal = useMemo(() => {
-    if (ratioSource === 'Preset') return PRESETS[presetName]
     if (ratioSource === 'Custom') {
       const out: Record<string, number> = {}
       customText
@@ -45,7 +27,7 @@ export default function RatioPlanner() {
       return out
     }
     return computeEqualGoal(frames)
-  }, [ratioSource, presetName, customText, frames])
+  }, [ratioSource, customText, frames])
 
   const totals = useMemo(() => totalsByTarget(frames), [frames])
   const targets = useMemo(() => Object.keys(totals).sort(), [totals])
@@ -53,23 +35,16 @@ export default function RatioPlanner() {
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-end gap-3">
-        <button
-          className="px-3 py-2 rounded-xl bg-accent-primary text-black disabled:opacity-60"
-          onClick={onScan}
-          disabled={scanning}
-        >
-          {scanning ? 'Scanning…' : 'Scan'}
-        </button>
 
         <div className="flex flex-col">
-          <label className="text-xs text-text-secondary">Desired total hours (optional)</label>
+          <label className="text-xs text-text-secondary">Desired hours per target</label>
           <input
             type="number"
             step="0.5"
             className="px-3 py-2 rounded-xl bg-slate-800 border border-slate-700"
-            placeholder="e.g. 40"
-            value={desiredHours ?? ''}
-            onChange={(e) => setDesiredHours(e.target.value ? Number(e.target.value) : undefined)}
+            placeholder="e.g. 20"
+            value={desiredHours ?? 20}
+            onChange={(e) => setDesiredHours(e.target.value ? Number(e.target.value) : 20)}
           />
         </div>
 
@@ -81,23 +56,11 @@ export default function RatioPlanner() {
             onChange={(e) => setRatioSource(e.target.value as RatioSource)}
           >
             <option>Equal</option>
-            <option>Preset</option>
             <option>Custom</option>
           </select>
         </div>
 
-        {ratioSource === 'Preset' && (
-          <div className="flex flex-col">
-            <label className="text-xs text-text-secondary">Preset</label>
-            <select
-              className="px-3 py-2 rounded-xl bg-slate-800 border border-slate-700"
-              value={presetName}
-              onChange={(e) => setPresetName(e.target.value)}
-            >
-              {Object.keys(PRESETS).map(p => <option key={p}>{p}</option>)}
-            </select>
-          </div>
-        )}
+  {/* Preset option removed - only Equal and Custom are supported */}
 
         {ratioSource === 'Custom' && (
           <div className="flex-1 min-w-[260px]">
@@ -112,16 +75,10 @@ export default function RatioPlanner() {
         )}
       </div>
 
-      {scanning && (
-        <div className="mt-1 h-1 bg-slate-700 rounded overflow-hidden">
-          <div className="animate-pulse bg-accent-primary h-1 w-full"></div>
-        </div>
-      )}
+  {/* Scanning moved to Sidebar; status is available in AppContext if needed */}
 
-      <div className="text-xs text-text-secondary">{status}</div>
-
-      {targets.length === 0 && !scanning && (
-        <div className="text-text-secondary">No LIGHT frames yet — enter a backend path and click Scan.</div>
+      {targets.length === 0 && (
+        <div className="text-text-secondary">No LIGHT frames yet — run Scan from the sidebar.</div>
       )}
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -152,16 +109,16 @@ export default function RatioPlanner() {
               <div className="h-64">
                 <ResponsiveContainer width="100%" height="100%">
                   <BarChart data={rows}>
-                    <XAxis dataKey="filter" tick={{ fill: '#9CA3AF' }} />
-                    <YAxis tick={{ fill: '#9CA3AF' }} />
+                    <XAxis dataKey="filter" tick={{ fill: '#ffffffff' }} />
+                    <YAxis tick={{ fill: '#ffffffff' }} />
                     <Tooltip
                       contentStyle={{ background: '#0F172A', border: '1px solid #1F2937', color: '#F9FAFB' }}
                       formatter={(val: any, name: any) => [`${Number(val).toFixed(2)} h`, name]}
                     />
                     <Legend />
-                    <Bar dataKey="captured"  stackId="a" name="Captured (h)"  fill="#FFD700" />
-                    <Bar dataKey="needed"    stackId="a" name="Needed (h)"    fill="#1E90FF" />
-                    <Bar dataKey="overshoot" stackId="a" name="Overshoot (h)" fill="#A9A9A9" />
+                    <Bar dataKey="captured"  stackId="a" name="Captured (h)"  fill="#20c945de" />
+                    <Bar dataKey="needed"    stackId="a" name="Needed (h)"    fill="#4892dbff" />
+                    <Bar dataKey="overshoot" stackId="a" name="Overshoot (h)" fill="hsla(64, 80%, 43%, 1.00)" />
                   </BarChart>
                 </ResponsiveContainer>
               </div>

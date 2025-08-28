@@ -5,7 +5,8 @@ import classNames from 'classnames'
 const MODES: Mode[] = ['AstroBin Export', 'Ratio Planner', 'Target Filter Report']
 
 export default function Sidebar() {
-  const { mode, setMode, backendPath, setBackendPath, recurse, setRecurse, frames } = useApp()
+  const { mode, setMode, backendPath, setBackendPath, recurse, setRecurse, frames, needsRescan } = useApp()
+  const { scanning, onScan } = useApp()
 
   return (
     <aside className="w-72 shrink-0 h-screen bg-bg-sidebar border-r border-slate-700 p-4 flex flex-col gap-4">
@@ -27,16 +28,31 @@ export default function Sidebar() {
       </div>
 
       <div className="mt-4 space-y-3">
-        <div className="text-sm uppercase tracking-wide text-text-secondary">Source (backend)</div>
 
         <div className="space-y-1">
-          <label className="text-xs text-text-secondary">Path on server</label>
+          <label className="text-sm text-text-secondary">Path to .fits files</label>
           <input
             className="w-full px-3 py-2 rounded-xl bg-slate-800 border border-slate-700"
             placeholder={navigator.platform.startsWith('Win') ? 'Y:\\\\M101' : '/data/M101'}
             value={backendPath}
             onChange={(e) => setBackendPath(e.target.value)}
           />
+        </div>
+
+        <div className="flex gap-2 items-center">
+          <button
+            className="px-3 py-2 rounded-xl bg-accent-primary text-black disabled:opacity-60"
+            onClick={onScan}
+            disabled={scanning}
+          >
+            {scanning ? 'Scanning…' : 'Scan'}
+          </button>
+          {needsRescan && (
+            <div className="flex items-center gap-2 text-sm text-red-400">
+              <span className="w-2 h-2 rounded-full bg-red-600 inline-block" />
+              <span>Rescan required</span>
+            </div>
+          )}
         </div>
 
         <label className="flex items-center gap-2 text-sm">
