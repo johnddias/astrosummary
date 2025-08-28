@@ -24,6 +24,9 @@ type Ctx = {
   status: string
   needsRescan: boolean
   setNeedsRescan: (v: boolean) => void
+  // debug toggle exposed to UI
+  debugEnabled: boolean
+  setDebugEnabled: (v: boolean) => void
 }
 
 const AppContext = createContext<Ctx | undefined>(undefined)
@@ -39,6 +42,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const [scanning, setScanning] = useState(false)
   const [status, setStatus] = useState('')
   const [needsRescan, setNeedsRescan] = useState(false)
+  const [debugEnabledState, setDebugEnabledState] = useState<boolean>(() => { try { return localStorage.getItem('debugEnabled') === '1' } catch { return false } })
+  const setDebugEnabled = (v: boolean) => { setDebugEnabledState(v); try { localStorage.setItem('debugEnabled', v ? '1' : '0') } catch {} }
     const [desiredHours, setDesiredHoursState] = useState<number | undefined>(() => {
         try {
           const s = localStorage.getItem('desiredHours')
@@ -98,6 +103,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     desiredHours, setDesiredHours,
     scanning, onScan, status,
     needsRescan, setNeedsRescan,
+  debugEnabled: debugEnabledState,
+  setDebugEnabled,
   }), [mode, backendPath, recurse, frames, desiredHours, scanning, status])
 
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>

@@ -5,7 +5,7 @@ import ChartCard from '../components/ChartCard'
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Legend } from 'recharts'
 import { normalizeFilter } from '../lib/filters'
 export default function RatioPlanner() {
-  const { frames, desiredHours, setDesiredHours } = useApp()
+  const { frames, desiredHours, setDesiredHours, debugEnabled } = useApp()
   // per-filter ratio inputs (defaults to 1.0) - initialized from localStorage when possible
   const [haRatio, setHaRatio] = useState<number>(() => {
     try { const v = parseFloat(localStorage.getItem('ratio.ha') ?? ''); return isNaN(v) ? 1.0 : Math.round(v*10)/10 } catch { return 1.0 }
@@ -255,13 +255,16 @@ export default function RatioPlanner() {
 
           return (
             <ChartCard key={target} title={`${target}`}>
-              <div className="mb-2 p-2 rounded bg-slate-900 border border-slate-800 text-xs">
-                <div className="font-semibold">Debug</div>
-                <div>Displayed filters: {displayedKeys.join(', ') || 'none'}</div>
-                <div>sumW (weights sum): {sumW.toFixed(2)}</div>
-                <div className="mt-1">Per-filter details:</div>
-                <pre className="whitespace-pre-wrap">{JSON.stringify(debug, null, 2)}</pre>
-              </div>
+              {debugEnabled && (
+                <div className="mb-2 p-2 rounded bg-slate-900 border border-slate-800 text-xs">
+                  <div className="font-semibold">Debug</div>
+                  <div>Displayed filters: {displayedKeys.join(', ') || 'none'}</div>
+                  <div>sumW (weights sum): {sumW.toFixed(2)}</div>
+                  <div className="mt-1">Per-filter details:</div>
+                  <pre className="whitespace-pre-wrap">{JSON.stringify(debug, null, 2)}</pre>
+                </div>
+              )}
+
               <div className="h-64">
                 <ResponsiveContainer width="100%" height="100%">
                   <BarChart data={rows}>
