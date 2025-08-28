@@ -31,22 +31,18 @@ export default function RatioPlanner() {
   const [colorScheme, setColorScheme] = useState<string>(() => {
     try { return localStorage.getItem('chartPalette') || 'muted' } catch { return 'muted' }
   })
-  const [showNarrowband, setShowNarrowband] = useState<boolean>(() => {
-    try { const v = localStorage.getItem('showNarrowband'); return v === null ? true : v === '1' } catch { return true }
-  })
-  const [showBroadband, setShowBroadband] = useState<boolean>(() => {
-    try { const v = localStorage.getItem('showBroadband'); return v === null ? true : v === '1' } catch { return true }
+  const [filterMode, setFilterMode] = useState<'narrowband'|'broadband'>(() => {
+    try { return (localStorage.getItem('filterMode') as any) || 'narrowband' } catch { return 'narrowband' }
   })
 
   useEffect(() => {
     try { localStorage.setItem('chartPalette', colorScheme) } catch {}
   }, [colorScheme])
 
-  // persist filter visibility and ratios
+  // persist filter mode and ratios
   useEffect(() => {
     try {
-      localStorage.setItem('showNarrowband', showNarrowband ? '1' : '0')
-      localStorage.setItem('showBroadband', showBroadband ? '1' : '0')
+      localStorage.setItem('filterMode', filterMode)
       localStorage.setItem('ratio.ha', haRatio.toFixed(1))
       localStorage.setItem('ratio.oiii', oiiiRatio.toFixed(1))
       localStorage.setItem('ratio.sii', siiRatio.toFixed(1))
@@ -55,7 +51,7 @@ export default function RatioPlanner() {
       localStorage.setItem('ratio.b', bRatio.toFixed(1))
       localStorage.setItem('ratio.l', lRatio.toFixed(1))
     } catch {}
-  }, [showNarrowband, showBroadband, haRatio, oiiiRatio, siiRatio, rRatio, gRatio, bRatio, lRatio])
+  }, [filterMode, haRatio, oiiiRatio, siiRatio, rRatio, gRatio, bRatio, lRatio])
 
   const palettes: Record<string, any> = {
     highContrast: {
@@ -121,7 +117,7 @@ export default function RatioPlanner() {
 
         <div className="flex flex-col">
           <label className="flex items-center gap-2 text-lg text-text-secondary">
-            <input type="checkbox" checked={showNarrowband} onChange={(e) => setShowNarrowband(e.target.checked)} className="w-5 h-5" />
+            <input type="radio" name="filterMode" checked={filterMode === 'narrowband'} onChange={() => setFilterMode('narrowband')} className="w-5 h-5" />
             <span>Narrowband</span>
           </label>
           <div className="flex flex-col gap-2">
@@ -142,7 +138,7 @@ export default function RatioPlanner() {
 
         <div className="flex flex-col">
           <label className="flex items-center gap-2 text-lg text-text-secondary">
-            <input type="checkbox" checked={showBroadband} onChange={(e) => setShowBroadband(e.target.checked)} className="w-5 h-5" />
+            <input type="radio" name="filterMode" checked={filterMode === 'broadband'} onChange={() => setFilterMode('broadband')} className="w-5 h-5" />
             <span>Broadband</span>
           </label>
           <div className="flex flex-col gap-2">
@@ -192,23 +188,33 @@ export default function RatioPlanner() {
           const current = totals[target] || {}
           // Build normalized goal weights and compute totalSeconds for target calculation
           const normGoal: Record<string, number> = {}
-          let sumW = 0
           for (const [raw, w] of Object.entries(goal)) {
             const k = normalizeFilter(raw)
             normGoal[k] = (normGoal[k] || 0) + (w || 0)
-            sumW += (w || 0)
           }
           const totalSeconds = (desiredHours && desiredHours > 0)
             ? desiredHours * 3600
             : Object.values(current).reduce((a, b) => a + (b || 0), 0)
 
-          const rows = Object.keys({ ...current, ...goal })
-            .sort()
+          const unionKeys = Object.keys({ ...current, ...goal }).sort()
+          const narrow = ['Ha', 'OIII', 'SII']
+          const broad = ['R', 'G', 'B', 'L']
+          const displayedKeys = unionKeys.filter(k => {
+            if (narrow.includes(k) && filterMode === 'narrowband') return true
+            if (broad.includes(k) && filterMode === 'broadband') return true
+            return false
+          })
+
+          // sum weights only for displayed filters
+          const sumW = displayedKeys.reduce((s, k) => s + (normGoal[k] || 0), 0)
+
+          const rows = displayedKeys
             .map(filter => {
               const capturedH = (current[filter] || 0) / 3600
               // compute this filter's target hours from normalized goal weights
               const weight = normGoal[filter] || 0
-              const targetSec = sumW > 0 ? (weight / sumW) * totalSeconds : 0
+              // if sumW is zero (no weights for displayed filters), distribute equally
+              const targetSec = sumW > 0 ? (weight / sumW) * totalSeconds : (displayedKeys.length > 0 ? (totalSeconds / displayedKeys.length) : 0)
               const targetH = targetSec / 3600
               const captured = Number(capturedH.toFixed(2))
               const needed = Number(Math.max(0, targetH - capturedH).toFixed(2))
@@ -228,15 +234,34 @@ export default function RatioPlanner() {
               const narrow = ['Ha', 'OIII', 'SII']
               const broad = ['R', 'G', 'B', 'L']
               // include if either set is selected and the filter belongs to that set
-              if (narrow.includes(r.filter) && showNarrowband) return true
-              if (broad.includes(r.filter) && showBroadband) return true
+              if (narrow.includes(r.filter) && filterMode === 'narrowband') return true
+              if (broad.includes(r.filter) && filterMode === 'broadband') return true
               return false
             })
 
           if (rows.length === 0) return null
 
+          // build debug info for displayed filters
+          const debug = displayedKeys.map(k => {
+            const weight = normGoal[k] || 0
+            const targetSec = sumW > 0 ? (weight / sumW) * totalSeconds : (displayedKeys.length > 0 ? (totalSeconds / displayedKeys.length) : 0)
+            return {
+              filter: k,
+              weight,
+              targetHours: Number((targetSec / 3600).toFixed(4)),
+              capturedHours: Number(((current[k] || 0) / 3600).toFixed(4))
+            }
+          })
+
           return (
             <ChartCard key={target} title={`${target}`}>
+              <div className="mb-2 p-2 rounded bg-slate-900 border border-slate-800 text-xs">
+                <div className="font-semibold">Debug</div>
+                <div>Displayed filters: {displayedKeys.join(', ') || 'none'}</div>
+                <div>sumW (weights sum): {sumW.toFixed(2)}</div>
+                <div className="mt-1">Per-filter details:</div>
+                <pre className="whitespace-pre-wrap">{JSON.stringify(debug, null, 2)}</pre>
+              </div>
               <div className="h-64">
                 <ResponsiveContainer width="100%" height="100%">
                   <BarChart data={rows}>
