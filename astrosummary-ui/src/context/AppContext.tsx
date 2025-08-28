@@ -105,7 +105,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     needsRescan, setNeedsRescan,
   debugEnabled: debugEnabledState,
   setDebugEnabled,
-  }), [mode, backendPath, recurse, frames, desiredHours, scanning, status])
+  }), [mode, backendPath, recurse, frames, desiredHours, scanning, status, needsRescan, debugEnabledState])
 
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>
 }
