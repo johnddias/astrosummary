@@ -1,126 +1,204 @@
 import { useMemo, useState } from 'react'
 import { useApp } from '../context/AppContext'
-import { scanFrames } from '../lib/scan'
 import type { AstroBinRow } from '../lib/types'
 import { DEFAULT_FILTER_MAP_TEXT, parseFilterMap } from '../lib/presets'
 import { copyToClipboard, downloadText } from '../lib/utils'
 
 export default function AstroBinExport() {
-  const { frames, setFrames, recurse, backendPath } = useApp()
+  const { frames } = useApp()
   const [filterMapText, setFilterMapText] = useState(DEFAULT_FILTER_MAP_TEXT)
-  const [status, setStatus] = useState('')
-  const [scanning, setScanning] = useState(false)
+  const [copiedTargets, setCopiedTargets] = useState<Record<string, boolean>>({})
+  const [copyErrors, setCopyErrors] = useState<Record<string, string>>({})
+  const [collapsedTargets, setCollapsedTargets] = useState<Record<string, boolean>>({})
+  const [showCsvExample, setShowCsvExample] = useState(false)
+  const [showMap, setShowMap] = useState(false)
 
-  const onScan = async () => {
-    setScanning(true)
-    try {
-      const { frames: lf, info } = await scanFrames({ backendPath, recurse })
-      setFrames(lf)
-      setStatus(info)
-    } finally {
-      setScanning(false)
-    }
-  }
+  // scanning is handled by `onScan` from context (Sidebar provides the Scan button)
 
-  const grouped: AstroBinRow[] = useMemo(() => {
+  const groupedByTarget: Record<string, AstroBinRow[]> = useMemo(() => {
     const fmap = parseFilterMap(filterMapText)
-    const by: Record<string, AstroBinRow> = {}
+    const out: Record<string, Record<string, AstroBinRow>> = {}
     for (const fr of frames) {
+      // Only include LIGHT frames (server also filters, but double-check here)
       if (fr.frameType !== 'LIGHT' || !fr.exposure_s) continue
+      const filterId = fmap[fr.filter?.toLowerCase?.() ?? fr.filter] ?? ''
       const row: AstroBinRow = {
         date: fr.date,
-        filter: fmap[fr.filter] ?? '',
+        filter: filterId,
         number: 1,
         duration: fr.exposure_s,
       }
-      const k = `${row.date}__${row.filter}__${row.duration}`
-      if (!by[k]) by[k] = row
-      else by[k].number += 1
+      const target = fr.target || 'Unknown'
+      const key = `${row.date}__${row.filter}__${row.duration}`
+      out[target] = out[target] || {}
+      if (!out[target][key]) out[target][key] = row
+      else out[target][key].number += 1
     }
-    return Object.values(by).sort((a, b) => a.date.localeCompare(b.date))
+    // Convert grouped maps to sorted arrays
+    const final: Record<string, AstroBinRow[]> = {}
+    for (const t of Object.keys(out).sort((a, b) => a.localeCompare(b))) {
+      final[t] = Object.values(out[t]).sort((a, b) => a.date.localeCompare(b.date))
+    }
+    return final
   }, [frames, filterMapText])
 
   const csv = useMemo(() => {
-    const cols = ['date', 'filter', 'number', 'duration']
+    const cols = ['target', 'date', 'filter', 'number', 'duration']
     const lines = [cols.join(',')]
-    for (const r of grouped) {
-      lines.push([r.date, r.filter, r.number, r.duration.toFixed(4)].join(','))
+    for (const [target, rows] of Object.entries(groupedByTarget)) {
+      for (const r of rows) {
+        lines.push([target, r.date, r.filter, r.number, r.duration.toFixed(4)].join(','))
+      }
     }
     return lines.join('\n')
-  }, [grouped])
+  }, [groupedByTarget])
 
   return (
     <div className="space-y-4">
-      <div className="flex gap-3 items-center">
-        <button
-          className="px-3 py-2 rounded-xl bg-accent-primary text-black disabled:opacity-60"
-          onClick={onScan}
-          disabled={scanning}
-        >
-          {scanning ? 'Scanning…' : 'Scan'}
-        </button>
-        <button className="px-3 py-2 rounded-xl bg-slate-700" onClick={() => copyToClipboard(csv)}>Copy CSV</button>
-        <button className="px-3 py-2 rounded-xl bg-slate-700" onClick={() => downloadText('astrobin_acquisitions.csv', csv)}>Download CSV</button>
-      </div>
-
-      {scanning && (
-        <div className="mt-1 h-1 bg-slate-700 rounded overflow-hidden">
-          <div className="animate-pulse bg-accent-primary h-1 w-full"></div>
-        </div>
-      )}
-
-      <div className="text-xs text-text-secondary">{status}</div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         <div>
-          <div className="text-sm mb-2">Filter → AstroBin ID map</div>
-          <textarea
-            value={filterMapText}
-            onChange={(e) => setFilterMapText(e.target.value)}
-            rows={10}
-            className="w-full bg-bg-card border border-slate-700 rounded-xl p-3 text-sm"
-          />
-          <div className="text-xs text-text-secondary mt-2">
-            Example: <code>Ha=4657</code>. Unmapped filters export with empty <code>filter</code>.
+          <div className="flex items-center justify-between mb-2">
+            <div className="text-sm">Filter → AstroBin ID map</div>
+            <button
+              className="px-2 py-1 rounded bg-slate-700 text-sm"
+              onClick={() => setShowMap((v) => !v)}
+            >
+              {showMap ? 'Hide Filter Map' : 'View Filter Map'}
+            </button>
+          </div>
+
+          {showMap ? (
+            <>
+              <textarea
+                value={filterMapText}
+                onChange={(e) => setFilterMapText(e.target.value)}
+                rows={10}
+                className="w-full bg-bg-card border border-slate-700 rounded-xl p-3 text-sm"
+              />
+              <div className="text-xs text-text-secondary mt-2">
+                Example: <code>Ha=4657</code>. Unmapped filters export with empty <code>filter</code>.
+                Matching is case-insensitive.
+              </div>
+            </>
+          ) : (
+            <div className="text-xs text-text-secondary p-3 bg-bg-card border border-slate-700 rounded-xl">
+              Filter map hidden. Click "View Filter Map" to view or edit mappings.
+            </div>
+          )}
+        </div>
+      </div>
+
+      <section className="mt-6">
+        <div className="text-sm mb-2">Preview ({Object.values(groupedByTarget).reduce((s, arr) => s + arr.length, 0)} rows)</div>
+        <div className="space-y-6">
+          {Object.keys(groupedByTarget).length === 0 && (
+            <div className="text-text-secondary">No rows — run Scan from the sidebar.</div>
+          )}
+
+          {/* Layout: two columns for multiple targets, center single table */}
+          <div className={Object.keys(groupedByTarget).length === 1 ? 'flex justify-center' : 'grid grid-cols-1 md:grid-cols-2 gap-6'}>
+            {Object.entries(groupedByTarget).map(([target, rows]) => {
+              const csvForTarget = (() => {
+                const cols = ['target', 'date', 'filter', 'number', 'duration']
+                const lines = [cols.join(',')]
+                for (const r of rows) lines.push([target, r.date, r.filter, r.number, r.duration.toFixed(4)].join(','))
+                return lines.join('\n')
+              })()
+
+              const onCopy = async () => {
+                try {
+                  await copyToClipboard(csvForTarget)
+                  setCopyErrors((s) => ({ ...s, [target]: '' }))
+                  setCopiedTargets((s) => ({ ...s, [target]: true }))
+                  setTimeout(() => setCopiedTargets((s) => ({ ...s, [target]: false })), 2000)
+                } catch (err) {
+                  setCopyErrors((s) => ({ ...s, [target]: 'Failed to copy' }))
+                  setTimeout(() => setCopyErrors((s) => ({ ...s, [target]: '' })), 2000)
+                }
+              }
+
+              const onDownload = () => {
+                const safe = target.replace(/[^a-z0-9-_]/gi, '_') || 'target'
+                downloadText(`astrobin_${safe}.csv`, csvForTarget)
+              }
+
+              return (
+                <div key={target} className={Object.keys(groupedByTarget).length === 1 ? 'w-full md:w-2/3' : ''}>
+                  <div className="bg-bg-card border border-slate-800 rounded-xl overflow-auto">
+                    <div className="p-3 border-b border-slate-800 text-sm font-medium flex items-center justify-between">
+                      <div>Target: {target} ({rows.length} rows)</div>
+                        <div className="flex items-center gap-2">
+                          <button className="px-3 py-1 rounded-xl bg-slate-700 text-sm" onClick={onCopy}>Copy CSV</button>
+                          <button className="px-3 py-1 rounded-xl bg-slate-700 text-sm" onClick={onDownload}>Download CSV</button>
+                          <button
+                            className="px-2 py-1 rounded bg-slate-600 text-xs"
+                            onClick={() => setCollapsedTargets((s) => ({ ...s, [target]: !s[target] }))}
+                          >
+                            {collapsedTargets[target] ? 'Expand' : 'Collapse'}
+                          </button>
+                          {copiedTargets[target] && (
+                            <span className="ml-2 px-3 py-1 rounded-full bg-emerald-600 text-white text-xs">Copied</span>
+                          )}
+                          {copyErrors[target] && (
+                            <span className="ml-2 px-3 py-1 rounded-full bg-red-600 text-white text-xs">{copyErrors[target]}</span>
+                          )}
+                        </div>
+                    </div>
+                    {!collapsedTargets[target] && (
+                      <div className="max-h-60 overflow-auto">
+                        <table className="w-full text-sm">
+                          <thead className="bg-slate-800">
+                            <tr>
+                              <th className="text-left p-2">date</th>
+                              <th className="text-left p-2">filter</th>
+                              <th className="text-left p-2">number</th>
+                              <th className="text-left p-2">duration</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {rows.map((r, i) => (
+                                <tr key={i} className="odd:bg-slate-900/40">
+                                  <td className="p-2">{r.date}</td>
+                                  <td className="p-2">{r.filter as any}</td>
+                                  <td className="p-2">{r.number}</td>
+                                  <td className="p-2">{r.duration.toFixed(4)}</td>
+                                </tr>
+                              ))}
+                          </tbody>
+                        </table>
+                        <div className="p-2 text-xs text-text-secondary">Showing {rows.length} rows</div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )
+            })}
           </div>
         </div>
 
-        <div>
-          <div className="text-sm mb-2">Preview ({grouped.length} rows)</div>
-          <div className="bg-bg-card border border-slate-800 rounded-xl overflow-auto max-h-[420px]">
-            <table className="w-full text-sm">
-              <thead className="bg-slate-800">
-                <tr>
-                  <th className="text-left p-2">date</th>
-                  <th className="text-left p-2">filter</th>
-                  <th className="text-left p-2">number</th>
-                  <th className="text-left p-2">duration</th>
-                </tr>
-              </thead>
-              <tbody>
-                {grouped.map((r, i) => (
-                  <tr key={i} className="odd:bg-slate-900/40">
-                    <td className="p-2">{r.date}</td>
-                    <td className="p-2">{r.filter as any}</td>
-                    <td className="p-2">{r.number}</td>
-                    <td className="p-2">{r.duration.toFixed(4)}</td>
-                  </tr>
-                ))}
-                {grouped.length === 0 && !scanning && (
-                  <tr><td className="p-3 text-text-secondary" colSpan={4}>No rows — click Scan.</td></tr>
-                )}
-              </tbody>
-            </table>
+        <div className="mt-3">
+          <div className="flex items-center justify-between mb-1">
+            <div className="text-sm">CSV layout example</div>
+            <button
+              className="px-2 py-1 rounded bg-slate-700 text-sm"
+              onClick={() => setShowCsvExample((v) => !v)}
+            >
+              {showCsvExample ? 'Hide' : 'Show'}
+            </button>
           </div>
 
-          <div className="mt-3">
-            <div className="text-sm mb-1">CSV (first 10 lines)</div>
+          {showCsvExample ? (
             <pre className="bg-slate-900 border border-slate-800 rounded-xl p-3 text-xs overflow-auto max-h-40">
 {csv.split('\n').slice(0, 10).join('\n')}
             </pre>
-          </div>
+          ) : (
+            <div className="text-xs text-text-secondary p-3 bg-bg-card border border-slate-800 rounded-xl">
+              CSV example collapsed. Click "Show" to view the first 10 lines.
+            </div>
+          )}
         </div>
-      </div>
+      </section>
     </div>
   )
 }

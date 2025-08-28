@@ -19,3 +19,8 @@ class ScanResponse(BaseModel):
     frames: List[LightFrame]
     files_scanned: int
     files_matched: int
+
+
+class BackendSettings(BaseModel):
+    path: str = ''
+    recurse: bool = True
