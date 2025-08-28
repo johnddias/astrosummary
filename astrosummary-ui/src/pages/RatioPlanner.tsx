@@ -4,6 +4,7 @@ import { totalsByTarget, computeEqualGoal } from '../lib/analysis'
 import ChartCard from '../components/ChartCard'
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Legend } from 'recharts'
 import { normalizeFilter } from '../lib/filters'
+import TargetFilterReport from './TargetFilterReport'
 export default function RatioPlanner() {
   const { frames, desiredHours, setDesiredHours, debugEnabled } = useApp()
   // per-filter ratio inputs (defaults to 1.0) - initialized from localStorage when possible
@@ -99,6 +100,8 @@ export default function RatioPlanner() {
   const totals = useMemo(() => totalsByTarget(frames), [frames])
   const targets = useMemo(() => Object.keys(totals).sort(), [totals])
 
+  const multipleTargets = targets.length > 1
+
   return (
     <div className="space-y-4">
   <div className="flex flex-wrap items-start gap-3">
@@ -181,6 +184,15 @@ export default function RatioPlanner() {
 
       {targets.length === 0 && (
         <div className="text-text-secondary">No LIGHT frames yet — run Scan from the sidebar.</div>
+      )}
+
+      {/* show the total-hours-by-filter summary only when more than one target exists */}
+      {multipleTargets && (
+        <div className="flex justify-center">
+          <div className="w-full max-w-3xl">
+            <TargetFilterReport />
+          </div>
+        </div>
       )}
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">

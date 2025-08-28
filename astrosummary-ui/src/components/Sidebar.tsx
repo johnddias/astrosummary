@@ -2,7 +2,7 @@ import type { Mode } from '../lib/types'
 import { useApp } from '../context/AppContext'
 import classNames from 'classnames'
 
-const MODES: Mode[] = ['AstroBin Export', 'Ratio Planner', 'Target Filter Report']
+const MODES: Mode[] = ['AstroBin Export', 'Ratio Planner']
 
 export default function Sidebar() {
   const { mode, setMode, backendPath, setBackendPath, recurse, setRecurse, frames, needsRescan } = useApp()

@@ -3,8 +3,29 @@ import { useApp } from '../context/AppContext'
 import ChartCard from '../components/ChartCard'
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts'
 
+// read palette from localStorage to match RatioPlanner themes
+const palettes: Record<string, any> = {
+  highContrast: {
+    axis: '#E5E7EB',
+    total: '#3B82F6'
+  },
+  colorBlind: {
+    axis: '#E6E6E6',
+    total: '#E69F00'
+  },
+  muted: {
+    axis: '#9CA3AF',
+    total: '#60A5FA'
+  }
+}
+
+function getColors() {
+  try { const key = localStorage.getItem('chartPalette') || 'muted'; return palettes[key] || palettes.muted } catch { return palettes.muted }
+}
+
 export default function TargetFilterReport() {
   const { frames } = useApp()
+  const colors = getColors()
 
   const rows = useMemo(() => {
     const by = new Map<string, number>()
@@ -26,10 +47,10 @@ export default function TargetFilterReport() {
         <div className="h-72">
           <ResponsiveContainer width="100%" height="100%">
             <BarChart data={rows}>
-              <XAxis dataKey="filter" tick={{ fill: '#9CA3AF' }} />
-              <YAxis tick={{ fill: '#9CA3AF' }} />
+              <XAxis dataKey="filter" tick={{ fill: colors.axis }} />
+              <YAxis tick={{ fill: colors.axis }} />
               <Tooltip contentStyle={{ background: '#0F172A', border: '1px solid #1F2937', color: '#F9FAFB' }} />
-              <Bar dataKey="hours" name="Hours" fill="#FFD700" />
+              <Bar dataKey="hours" name="Hours" fill={colors.total} />
             </BarChart>
           </ResponsiveContainer>
         </div>
