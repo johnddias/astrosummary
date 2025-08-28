@@ -3,19 +3,31 @@ import { useApp } from '../context/AppContext'
 import ChartCard from '../components/ChartCard'
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts'
 
-// read palette from localStorage to match RatioPlanner themes
+// palettes must match RatioPlanner so the total bar uses the same "captured" color
 const palettes: Record<string, any> = {
   highContrast: {
-    axis: '#E5E7EB',
-    total: '#3B82F6'
+    captured: '#10B981', // emerald
+    needed: '#3B82F6', // blue
+    overshoot: '#F59E0B', // amber
+    targetStroke: '#F3F4F6',
+    targetFill: 'rgba(255,255,255,0.06)',
+    axis: '#E5E7EB'
   },
   colorBlind: {
-    axis: '#E6E6E6',
-    total: '#E69F00'
+    captured: '#0072B2',
+    needed: '#E69F00',
+    overshoot: '#009E73',
+    targetStroke: '#FFFFFF',
+    targetFill: 'rgba(255,255,255,0.06)',
+    axis: '#E6E6E6'
   },
   muted: {
-    axis: '#9CA3AF',
-    total: '#60A5FA'
+    captured: '#34D399',
+    needed: '#60A5FA',
+    overshoot: '#FCA5A5',
+    targetStroke: '#CBD5E1',
+    targetFill: 'rgba(203,213,225,0.06)',
+    axis: '#9CA3AF'
   }
 }
 
@@ -50,7 +62,7 @@ export default function TargetFilterReport() {
               <XAxis dataKey="filter" tick={{ fill: colors.axis }} />
               <YAxis tick={{ fill: colors.axis }} />
               <Tooltip contentStyle={{ background: '#0F172A', border: '1px solid #1F2937', color: '#F9FAFB' }} />
-              <Bar dataKey="hours" name="Hours" fill={colors.total} />
+              <Bar dataKey="hours" name="Hours" fill={colors.captured} />
             </BarChart>
           </ResponsiveContainer>
         </div>
