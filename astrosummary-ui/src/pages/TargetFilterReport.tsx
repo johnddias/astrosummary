@@ -1,24 +1,10 @@
-import { useMemo, useState } from 'react'
+import { useMemo } from 'react'
 import { useApp } from '../context/AppContext'
-import { scanFrames } from '../lib/scan'
 import ChartCard from '../components/ChartCard'
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts'
 
 export default function TargetFilterReport() {
-  const { frames, setFrames, recurse, backendPath } = useApp()
-  const [status, setStatus] = useState('')
-  const [scanning, setScanning] = useState(false)
-
-  const onScan = async () => {
-    setScanning(true)
-    try {
-      const { frames: lf, info } = await scanFrames({ backendPath, recurse })
-      setFrames(lf)
-      setStatus(info)
-    } finally {
-      setScanning(false)
-    }
-  }
+  const { frames } = useApp()
 
   const rows = useMemo(() => {
     const by = new Map<string, number>()
@@ -34,23 +20,7 @@ export default function TargetFilterReport() {
 
   return (
     <div className="space-y-4">
-      <div className="flex gap-3 items-center">
-        <button
-          className="px-3 py-2 rounded-xl bg-accent-primary text-black disabled:opacity-60"
-          onClick={onScan}
-          disabled={scanning}
-        >
-          {scanning ? 'Scanning…' : 'Scan'}
-        </button>
-      </div>
-
-      {scanning && (
-        <div className="mt-1 h-1 bg-slate-700 rounded overflow-hidden">
-          <div className="animate-pulse bg-accent-primary h-1 w-full"></div>
-        </div>
-      )}
-
-      <div className="text-xs text-text-secondary">{status}</div>
+  {/* Scan is available in the sidebar */}
 
       <ChartCard title="Total Hours by Filter (all targets)">
         <div className="h-72">
