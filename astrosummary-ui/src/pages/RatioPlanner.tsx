@@ -6,14 +6,56 @@ import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Legend } fro
 import { normalizeFilter } from '../lib/filters'
 export default function RatioPlanner() {
   const { frames, desiredHours, setDesiredHours } = useApp()
-  const [customText, setCustomText] = useState<string>('')
+  // per-filter ratio inputs (defaults to 1.0) - initialized from localStorage when possible
+  const [haRatio, setHaRatio] = useState<number>(() => {
+    try { const v = parseFloat(localStorage.getItem('ratio.ha') ?? ''); return isNaN(v) ? 1.0 : Math.round(v*10)/10 } catch { return 1.0 }
+  })
+  const [oiiiRatio, setOiiiRatio] = useState<number>(() => {
+    try { const v = parseFloat(localStorage.getItem('ratio.oiii') ?? ''); return isNaN(v) ? 1.0 : Math.round(v*10)/10 } catch { return 1.0 }
+  })
+  const [siiRatio, setSiiRatio] = useState<number>(() => {
+    try { const v = parseFloat(localStorage.getItem('ratio.sii') ?? ''); return isNaN(v) ? 1.0 : Math.round(v*10)/10 } catch { return 1.0 }
+  })
+  const [rRatio, setRRatio] = useState<number>(() => {
+    try { const v = parseFloat(localStorage.getItem('ratio.r') ?? ''); return isNaN(v) ? 1.0 : Math.round(v*10)/10 } catch { return 1.0 }
+  })
+  const [gRatio, setGRatio] = useState<number>(() => {
+    try { const v = parseFloat(localStorage.getItem('ratio.g') ?? ''); return isNaN(v) ? 1.0 : Math.round(v*10)/10 } catch { return 1.0 }
+  })
+  const [bRatio, setBRatio] = useState<number>(() => {
+    try { const v = parseFloat(localStorage.getItem('ratio.b') ?? ''); return isNaN(v) ? 1.0 : Math.round(v*10)/10 } catch { return 1.0 }
+  })
+  const [lRatio, setLRatio] = useState<number>(() => {
+    try { const v = parseFloat(localStorage.getItem('ratio.l') ?? ''); return isNaN(v) ? 1.0 : Math.round(v*10)/10 } catch { return 1.0 }
+  })
   const [colorScheme, setColorScheme] = useState<string>(() => {
     try { return localStorage.getItem('chartPalette') || 'muted' } catch { return 'muted' }
+  })
+  const [showNarrowband, setShowNarrowband] = useState<boolean>(() => {
+    try { const v = localStorage.getItem('showNarrowband'); return v === null ? true : v === '1' } catch { return true }
+  })
+  const [showBroadband, setShowBroadband] = useState<boolean>(() => {
+    try { const v = localStorage.getItem('showBroadband'); return v === null ? true : v === '1' } catch { return true }
   })
 
   useEffect(() => {
     try { localStorage.setItem('chartPalette', colorScheme) } catch {}
   }, [colorScheme])
+
+  // persist filter visibility and ratios
+  useEffect(() => {
+    try {
+      localStorage.setItem('showNarrowband', showNarrowband ? '1' : '0')
+      localStorage.setItem('showBroadband', showBroadband ? '1' : '0')
+      localStorage.setItem('ratio.ha', haRatio.toFixed(1))
+      localStorage.setItem('ratio.oiii', oiiiRatio.toFixed(1))
+      localStorage.setItem('ratio.sii', siiRatio.toFixed(1))
+      localStorage.setItem('ratio.r', rRatio.toFixed(1))
+      localStorage.setItem('ratio.g', gRatio.toFixed(1))
+      localStorage.setItem('ratio.b', bRatio.toFixed(1))
+      localStorage.setItem('ratio.l', lRatio.toFixed(1))
+    } catch {}
+  }, [showNarrowband, showBroadband, haRatio, oiiiRatio, siiRatio, rRatio, gRatio, bRatio, lRatio])
 
   const palettes: Record<string, any> = {
     highContrast: {
@@ -44,31 +86,26 @@ export default function RatioPlanner() {
   const colors = palettes[colorScheme] || palettes.muted
 
   const goal = useMemo(() => {
-    // Always use custom ratios if provided, otherwise fall back to equal goal
-    if (customText && customText.trim()) {
-      const out: Record<string, number> = {}
-      customText
-        .replace(/,/g, ' ')
-        .split(/\s+/)
-        .map(tok => tok.trim())
-        .filter(Boolean)
-        .forEach(tok => {
-          const [k, v] = tok.includes('=') ? tok.split('=') : [tok, '1']
-          const key = (k || '').trim()
-          const val = Number((v || '').trim())
-          if (key && val > 0) out[key] = val
-        })
-      return out
-    }
-    return computeEqualGoal(frames)
-  }, [customText, frames])
+    // Always use explicit per-filter inputs as the goal weights
+    const out: Record<string, number> = {}
+    out['Ha'] = haRatio || 1.0
+    out['OIII'] = oiiiRatio || 1.0
+    out['SII'] = siiRatio || 1.0
+    out['R'] = rRatio || 1.0
+    out['G'] = gRatio || 1.0
+    out['B'] = bRatio || 1.0
+    out['L'] = lRatio || 1.0
+    // if no frames, fallback to equal goal behavior
+    if (frames.length === 0) return computeEqualGoal(frames)
+    return out
+  }, [frames, haRatio, oiiiRatio, siiRatio, rRatio, gRatio, bRatio, lRatio])
 
   const totals = useMemo(() => totalsByTarget(frames), [frames])
   const targets = useMemo(() => Object.keys(totals).sort(), [totals])
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-wrap items-end gap-3">
+  <div className="flex flex-wrap items-start gap-3">
 
         <div className="flex flex-col">
           <label className="text-xs text-text-secondary">Desired hours per target</label>
@@ -82,15 +119,53 @@ export default function RatioPlanner() {
           />
         </div>
 
-        <div className="flex-1 min-w-[260px]">
-          <label className="text-xs text-text-secondary">Custom ratios (e.g., Ha=2 OIII=1 SII=1)</label>
-          <input
-            className="w-full px-3 py-2 rounded-xl bg-slate-800 border border-slate-700"
-            placeholder="Ha=2 OIII=1 SII=1"
-            value={customText}
-            onChange={(e) => setCustomText(e.target.value)}
-          />
+        <div className="flex flex-col">
+          <label className="flex items-center gap-2 text-lg text-text-secondary">
+            <input type="checkbox" checked={showNarrowband} onChange={(e) => setShowNarrowband(e.target.checked)} className="w-5 h-5" />
+            <span>Narrowband</span>
+          </label>
+          <div className="flex flex-col gap-2">
+            <div className="flex items-center justify-between gap-4">
+              <div className="text-xs text-text-secondary">Ha</div>
+              <input className="w-28 px-2 py-1 rounded-xl bg-slate-800 border border-slate-700 text-center" type="number" step="0.1" min="1.0" max="9.9" value={haRatio.toFixed(1)} onChange={(e) => { const v = Math.max(1.0, Math.min(9.9, Number(parseFloat(e.target.value || '1')))); setHaRatio(Math.round(v*10)/10) }} />
+            </div>
+            <div className="flex items-center justify-between gap-4">
+              <div className="text-xs text-text-secondary">OIII</div>
+              <input className="w-28 px-2 py-1 rounded-xl bg-slate-800 border border-slate-700 text-center" type="number" step="0.1" min="1.0" max="9.9" value={oiiiRatio.toFixed(1)} onChange={(e) => { const v = Math.max(1.0, Math.min(9.9, Number(parseFloat(e.target.value || '1')))); setOiiiRatio(Math.round(v*10)/10) }} />
+            </div>
+            <div className="flex items-center justify-between gap-4">
+              <div className="text-xs text-text-secondary">SII</div>
+              <input className="w-28 px-2 py-1 rounded-xl bg-slate-800 border border-slate-700 text-center" type="number" step="0.1" min="1.0" max="9.9" value={siiRatio.toFixed(1)} onChange={(e) => { const v = Math.max(1.0, Math.min(9.9, Number(parseFloat(e.target.value || '1')))); setSiiRatio(Math.round(v*10)/10) }} />
+            </div>
+          </div>
         </div>
+
+        <div className="flex flex-col">
+          <label className="flex items-center gap-2 text-lg text-text-secondary">
+            <input type="checkbox" checked={showBroadband} onChange={(e) => setShowBroadband(e.target.checked)} className="w-5 h-5" />
+            <span>Broadband</span>
+          </label>
+          <div className="flex flex-col gap-2">
+            <div className="flex items-center justify-between gap-4">
+              <div className="text-xs text-text-secondary">R</div>
+              <input className="w-28 px-2 py-1 rounded-xl bg-slate-800 border border-slate-700 text-center" type="number" step="0.1" min="1.0" max="9.9" value={rRatio.toFixed(1)} onChange={(e) => { const v = Math.max(1.0, Math.min(9.9, Number(parseFloat(e.target.value || '1')))); setRRatio(Math.round(v*10)/10) }} />
+            </div>
+            <div className="flex items-center justify-between gap-4">
+              <div className="text-xs text-text-secondary">G</div>
+              <input className="w-28 px-2 py-1 rounded-xl bg-slate-800 border border-slate-700 text-center" type="number" step="0.1" min="1.0" max="9.9" value={gRatio.toFixed(1)} onChange={(e) => { const v = Math.max(1.0, Math.min(9.9, Number(parseFloat(e.target.value || '1')))); setGRatio(Math.round(v*10)/10) }} />
+            </div>
+            <div className="flex items-center justify-between gap-4">
+              <div className="text-xs text-text-secondary">B</div>
+              <input className="w-28 px-2 py-1 rounded-xl bg-slate-800 border border-slate-700 text-center" type="number" step="0.1" min="1.0" max="9.9" value={bRatio.toFixed(1)} onChange={(e) => { const v = Math.max(1.0, Math.min(9.9, Number(parseFloat(e.target.value || '1')))); setBRatio(Math.round(v*10)/10) }} />
+            </div>
+            <div className="flex items-center justify-between gap-4">
+              <div className="text-xs text-text-secondary">L</div>
+              <input className="w-28 px-2 py-1 rounded-xl bg-slate-800 border border-slate-700 text-center" type="number" step="0.1" min="1.0" max="9.9" value={lRatio.toFixed(1)} onChange={(e) => { const v = Math.max(1.0, Math.min(9.9, Number(parseFloat(e.target.value || '1')))); setLRatio(Math.round(v*10)/10) }} />
+            </div>
+          </div>
+        </div>
+
+  {/* custom ratios removed - using explicit per-filter inputs instead */}
         <div className="flex flex-col">
           <label className="text-xs text-text-secondary">Color scheme</label>
           <select
@@ -103,6 +178,7 @@ export default function RatioPlanner() {
             <option value="colorBlind">Color-blind friendly</option>
           </select>
         </div>
+
       </div>
 
   {/* Scanning moved to Sidebar; status is available in AppContext if needed */}
@@ -148,6 +224,14 @@ export default function RatioPlanner() {
               }
             })
             .filter(r => r.captured > 0 || r.needed > 0 || r.overshoot > 0)
+            .filter(r => {
+              const narrow = ['Ha', 'OIII', 'SII']
+              const broad = ['R', 'G', 'B', 'L']
+              // include if either set is selected and the filter belongs to that set
+              if (narrow.includes(r.filter) && showNarrowband) return true
+              if (broad.includes(r.filter) && showBroadband) return true
+              return false
+            })
 
           if (rows.length === 0) return null
 
