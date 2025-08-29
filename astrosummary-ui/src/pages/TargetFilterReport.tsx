@@ -61,7 +61,14 @@ export default function TargetFilterReport() {
             <BarChart data={rows}>
               <XAxis dataKey="filter" tick={{ fill: colors.axis }} />
               <YAxis tick={{ fill: colors.axis }} />
-              <Tooltip contentStyle={{ background: '#0F172A', border: '1px solid #1F2937', color: '#F9FAFB' }} />
+              <Tooltip
+                cursor={{ fill: 'transparent' }}
+                contentStyle={{ background: '#0F172A', border: '1px solid #1F2937', color: '#F9FAFB' }}
+                formatter={(value: any) => {
+                  if (typeof value === 'number') return `${value.toFixed(1)} h`
+                  return value
+                }}
+              />
               <Bar dataKey="hours" name="Hours" fill={colors.captured} />
             </BarChart>
           </ResponsiveContainer>
