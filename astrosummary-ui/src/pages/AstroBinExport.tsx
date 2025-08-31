@@ -21,7 +21,8 @@ export default function AstroBinExport() {
     for (const fr of frames) {
       // Only include LIGHT frames (server also filters, but double-check here)
       if (fr.frameType !== 'LIGHT' || !fr.exposure_s) continue
-      const filterId = fmap[fr.filter?.toLowerCase?.() ?? fr.filter] ?? ''
+  const filterKey = typeof fr.filter === 'string' ? fr.filter.toLowerCase() : '';
+  const filterId = fmap[filterKey] ?? '';
       const row: AstroBinRow = {
         date: fr.date,
         filter: filterId,
