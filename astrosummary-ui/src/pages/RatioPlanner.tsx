@@ -1,9 +1,9 @@
 import { useMemo, useState, useEffect } from 'react'
 import { useApp } from '../context/AppContext'
-import { totalsByTarget, computeEqualGoal } from '../lib/analysis'
+import { totalsByTarget, computeEqualGoal } from '../library/analysis'
 import ChartCard from '../components/ChartCard'
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Legend } from 'recharts'
-import { normalizeFilter } from '../lib/filters'
+import { normalizeFilter } from '../library/filters'
 import TargetFilterReport from './TargetFilterReport'
 export default function RatioPlanner() {
   const { frames, desiredHours, setDesiredHours, debugEnabled } = useApp()

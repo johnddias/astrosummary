@@ -1,7 +1,7 @@
 import React, { createContext, useContext, useEffect, useMemo, useState } from 'react'
-import { apiGetSettings, apiSetSettings } from '../lib/api'
-import { scanFrames } from '../lib/scan'
-import type { LightFrame, Mode } from '../lib/types'
+import { apiGetSettings, apiSetSettings } from '../library/api'
+import { scanFrames } from '../library/scan'
+import type { LightFrame, Mode } from '../library/types'
 
 type Ctx = {
   mode: Mode

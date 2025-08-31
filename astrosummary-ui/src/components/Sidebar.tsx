@@ -1,4 +1,4 @@
-import type { Mode } from '../lib/types'
+import type { Mode } from '../library/types'
 import { useApp } from '../context/AppContext'
 import classNames from 'classnames'
 

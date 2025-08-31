@@ -1,8 +1,8 @@
 import { useMemo, useState } from 'react'
 import { useApp } from '../context/AppContext'
-import type { AstroBinRow } from '../lib/types'
-import { DEFAULT_FILTER_MAP_TEXT, parseFilterMap } from '../lib/presets'
-import { copyToClipboard, downloadText } from '../lib/utils'
+import type { AstroBinRow } from '../library/types'
+import { DEFAULT_FILTER_MAP_TEXT, parseFilterMap } from '../library/presets'
+import { copyToClipboard, downloadText } from '../library/utils'
 
 export default function AstroBinExport() {
   const { frames } = useApp()
