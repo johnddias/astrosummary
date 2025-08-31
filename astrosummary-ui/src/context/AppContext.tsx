@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useEffect, useMemo, useState } from 'react'
 import { apiGetSettings, apiSetSettings } from '../library/api'
 import { scanFrames } from '../library/scan'
+import { normalizeFilter } from '../library/filters'
 import type { LightFrame, Mode } from '../library/types'
 
 type Ctx = {
@@ -84,7 +85,14 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   setScanning(true)
     try {
       const { frames: lf, info } = await scanFrames({ backendPath, recurse })
-      setFrames(lf)
+      // Normalize incoming frames so filter keys match UI canonical names
+      const normalized = (lf || []).map(f => ({
+        ...f,
+        filter: normalizeFilter((f.filter as any) ?? ''),
+        exposure_s: typeof f.exposure_s === 'number' ? f.exposure_s : Number(f.exposure_s) || 0,
+        frameType: (f.frameType as any) || 'LIGHT',
+      }))
+      setFrames(normalized)
       setStatus(info)
     } catch (err) {
       setStatus('Scan failed')
