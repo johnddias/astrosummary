@@ -84,15 +84,32 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   setNeedsRescan(false)
   setScanning(true)
     try {
-      const { frames: lf, info } = await scanFrames({ backendPath, recurse })
-      // Normalize incoming frames so filter keys match UI canonical names
-      const normalized = (lf || []).map(f => ({
+      const collected: typeof frames = []
+      setFrames([])
+      const live: LightFrame[] = []
+      const { frames: final, info } = await scanFrames({ backendPath, recurse }, (p) => {
+        try { setStatus(`Scanning: ${p.files_scanned} files scanned, ${p.files_matched} matched`) } catch {}
+      }, (f) => {
+        // Append normalized frame as it arrives so Sidebar shows live count
+        const nf: LightFrame = {
+          ...f,
+          filter: normalizeFilter((f.filter as any) ?? ''),
+          exposure_s: typeof f.exposure_s === 'number' ? f.exposure_s : Number(f.exposure_s) || 0,
+          frameType: (f.frameType as any) || 'LIGHT',
+        }
+        live.push(nf)
+        setFrames((prev) => [...prev, nf])
+      })
+
+      // final normalization (in case any frames arrived in the final batch)
+      const normalized = (final || []).map(f => ({
         ...f,
         filter: normalizeFilter((f.filter as any) ?? ''),
         exposure_s: typeof f.exposure_s === 'number' ? f.exposure_s : Number(f.exposure_s) || 0,
         frameType: (f.frameType as any) || 'LIGHT',
       }))
-      setFrames(normalized)
+      // prefer the live-accumulated frames if present, otherwise set final
+      if (live.length === 0) setFrames(normalized)
       setStatus(info)
     } catch (err) {
       setStatus('Scan failed')

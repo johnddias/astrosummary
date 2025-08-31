@@ -4,6 +4,7 @@ from datetime import datetime
 from typing import Dict, Iterable, List, Tuple
 from astropy.io import fits
 import unicodedata
+import json
 
 CANON = {
     "ha": "Ha", "hα": "Ha", "h-a": "Ha", "halpha": "Ha",
@@ -143,3 +144,46 @@ def scan_directory(path: str, recurse: bool, extensions: List[str]):
             continue
 
     return frames, files_scanned, files_matched
+
+
+def stream_scan_directory(path: str, recurse: bool, extensions: List[str]):
+    """Generator that yields newline-delimited JSON events while scanning.
+
+    Events:
+      { type: 'progress', files_scanned: int, files_matched: int }
+      { type: 'frame', frame: { ... } }
+      { type: 'done', files_scanned: int, files_matched: int }
+    """
+    files_scanned = 0
+    files_matched = 0
+
+    for fpath in _iter_paths(path, recurse, extensions):
+        files_scanned += 1
+        # emit progress update for UI
+        yield json.dumps({ 'type': 'progress', 'files_scanned': files_scanned, 'files_matched': files_matched }) + '\n'
+        try:
+            with fits.open(fpath, memmap=True) as hdul:
+                hdr = hdul[0].header if len(hdul) else {}
+                frame_type = _parse_type(hdr)
+                if frame_type != 'LIGHT':
+                    continue
+                files_matched += 1
+                target = _parse_target(hdr, fpath)
+                filt   = _parse_filter(hdr, fpath)
+                expo   = _parse_exposure(hdr)
+                date   = _parse_date(hdr)
+
+                frame = {
+                    'target': target,
+                    'filter': filt,
+                    'exposure_s': float(expo),
+                    'date': date,
+                    'frameType': 'LIGHT',
+                }
+                yield json.dumps({ 'type': 'frame', 'frame': frame }) + '\n'
+        except Exception:
+            # skip silently
+            continue
+
+    # final summary
+    yield json.dumps({ 'type': 'done', 'files_scanned': files_scanned, 'files_matched': files_matched }) + '\n'

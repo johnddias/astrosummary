@@ -1,7 +1,8 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from models import ScanRequest, ScanResponse, LightFrame
-from scanner import scan_directory
+from scanner import scan_directory, stream_scan_directory
+from fastapi.responses import StreamingResponse
 from models import BackendSettings
 import json
 from pathlib import Path
@@ -40,6 +41,13 @@ def scan(req: ScanRequest):
         "files_scanned": files_scanned,
         "files_matched": files_matched,
     }
+
+
+@app.post('/scan_stream')
+def scan_stream(req: ScanRequest):
+    """Stream newline-delimited JSON events for long-running scans."""
+    gen = stream_scan_directory(req.path, req.recurse, req.extensions)
+    return StreamingResponse(gen, media_type='application/x-ndjson')
 
 
 @app.get('/settings', response_model=BackendSettings)
