@@ -92,10 +92,11 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         try {
           // update structured progress state
           setScanProgress({ files_scanned: p.files_scanned ?? 0, files_matched: p.files_matched ?? 0, total_files: p.total_files })
+          // Show only the scanned / total progress live; omit the matched count until the scan completes
           if (typeof p.total_files === 'number') {
-            setStatus(`Scanning: ${p.files_scanned} / ${p.total_files} files scanned, ${p.files_matched} matched`)
+            setStatus(`Scanning: ${p.files_scanned} / ${p.total_files} files scanned`)
           } else {
-            setStatus(`Scanning: ${p.files_scanned} files scanned, ${p.files_matched} matched`)
+            setStatus(`Scanning: ${p.files_scanned} files scanned`)
           }
         } catch {}
       }, (f) => {

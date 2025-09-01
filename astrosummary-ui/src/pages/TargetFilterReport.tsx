@@ -44,7 +44,8 @@ export default function TargetFilterReport() {
     for (const f of frames) {
       if (f.frameType !== 'LIGHT') continue
       const k = f.filter || 'Unknown'
-      by.set(k, (by.get(k) || 0) + f.exposure_s / 3600)
+      const hours = (f.exposure_s ?? 0) / 3600
+      by.set(k, (by.get(k) || 0) + hours)
     }
     return Array.from(by.entries())
       .map(([filter, hours]) => ({ filter, hours }))

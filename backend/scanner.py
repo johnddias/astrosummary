@@ -84,18 +84,6 @@ def _parse_exposure(hdr) -> float:
     except Exception:
         return 0.0
 
-def _parse_filter(hdr, fallback_from_name: str) -> str:
-    val = _get_first(hdr, FILT_KEYS)
-    if val and str(val).strip():
-        return str(val).strip()
-    # fallback from filename tokens: _Ha_, _OIII_, etc.
-    base = os.path.basename(fallback_from_name).lower()
-    for token in ("ha","oiii","sii","l","r","g","b"):
-        if re.search(rf"(?:^|[_\W]){token}(?:[_\W]|$)", base):
-            return {"ha":"Ha","oiii":"OIII","sii":"SII",
-                    "l":"L","r":"R","g":"G","b":"B"}[token]
-    return "Unknown"
-
 def _parse_target(hdr, path: str) -> str:
     obj = hdr.get("OBJECT") or hdr.get("OBJCTRA")  # OBJECT is typical
     if obj and str(obj).strip():
