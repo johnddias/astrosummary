@@ -3,7 +3,7 @@ import { useApp } from '../context/AppContext'
 import ChartCard from '../components/ChartCard'
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts'
 
-// palettes must match RatioPlanner so the total bar uses the same "captured" color
+// palettes must match Target Data Visualizer so the total bar uses the same "captured" color
 const palettes: Record<string, any> = {
   highContrast: {
     captured: '#10B981', // emerald
@@ -55,7 +55,7 @@ export default function TargetFilterReport() {
     <div className="space-y-4">
   {/* Scan is available in the sidebar */}
 
-      <ChartCard title="Total Hours by Filter (all targets)">
+      <ChartCard title="Total Hours Captured by Filter (all targets)">
         <div className="h-72">
           <ResponsiveContainer width="100%" height="100%">
             <BarChart data={rows}>

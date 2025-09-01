@@ -1,9 +1,9 @@
 # AstroSummary — UI updates
 
-This repository contains the AstroSummary frontend and backend. Recent updates were made to the Ratio Planner UI (branch `gui`). This top-level README summarizes the changes and how to run the project locally.
+This repository contains the AstroSummary frontend and backend. Recent updates were made to the Target Data Visualizer UI (branch `gui`). This top-level README summarizes the changes and how to run the project locally.
 
 ## Recent changes (branch: gui)
-- RatioPlanner UI: per-filter ratio inputs for Narrowband (Ha, OIII, SII) and Broadband (R, G, B, L).
+- Target Data Visualizer UI: per-filter ratio inputs for Narrowband (Ha, OIII, SII) and Broadband (R, G, B, L).
 - Per-filter ratio inputs are persisted to localStorage.
 - Narrowband/Broadband toggle checkboxes placed next to their column headers; charts show only selected filter sets.
 - Color-scheme selector for charts persisted to localStorage.

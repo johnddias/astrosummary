@@ -2,7 +2,7 @@ import type { Mode } from '../library/types'
 import { useApp } from '../context/AppContext'
 import classNames from 'classnames'
 
-const MODES: Mode[] = ['AstroBin Export', 'Ratio Planner']
+const MODES: Mode[] = ['AstroBin Export', 'Target Data Visualizer']
 
 export default function Sidebar() {
   const { mode, setMode, backendPath, setBackendPath, recurse, setRecurse, frames, needsRescan } = useApp()
@@ -67,16 +67,11 @@ export default function Sidebar() {
       </div>
 
       <div className="mt-auto text-xs text-text-secondary">
-        <div className="flex items-center justify-between">
-          <div>Dark theme • Recharts • Backend scan</div>
-        </div>
-        <div className="mt-2 flex items-center gap-2">
           <label className="flex items-center gap-2 text-sm">
             <input type="checkbox" checked={debugEnabled} onChange={(e) => setDebugEnabled(e.target.checked)} />
             <span className="text-text-secondary">Debug</span>
           </label>
         </div>
-      </div>
     </aside>
   )
 }
