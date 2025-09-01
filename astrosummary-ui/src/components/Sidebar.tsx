@@ -5,9 +5,7 @@ import classNames from 'classnames'
 const MODES: Mode[] = ['AstroBin Export', 'Target Data Visualizer']
 
 export default function Sidebar() {
-  const { mode, setMode, backendPath, setBackendPath, recurse, setRecurse, frames, needsRescan } = useApp()
-  const { scanning, onScan } = useApp()
-  const { debugEnabled, setDebugEnabled } = useApp()
+  const { mode, setMode, backendPath, setBackendPath, recurse, setRecurse, frames, needsRescan, scanProgress, status, scanning, onScan, debugEnabled, setDebugEnabled } = useApp()
 
   return (
     <aside className="w-72 shrink-0 h-screen bg-bg-sidebar border-r border-slate-700 p-4 flex flex-col gap-4">
@@ -64,6 +62,18 @@ export default function Sidebar() {
         <div className="text-xs text-text-secondary">
           Current LIGHT frames: <span className="text-white">{frames.length}</span>
         </div>
+
+        {scanning && (
+          <div className="mt-2">
+            <div className="text-xs text-text-secondary mb-1">{status}</div>
+            <div className="w-full bg-slate-800 rounded-full h-2 overflow-hidden">
+              <div
+                className="h-2 bg-accent-primary"
+                style={{ width: scanProgress.total_files ? `${Math.round((scanProgress.files_scanned / scanProgress.total_files) * 100)}%` : `${Math.min(100, scanProgress.files_scanned * 2)}%` }}
+              />
+            </div>
+          </div>
+        )}
       </div>
 
       <div className="mt-auto text-xs text-text-secondary">

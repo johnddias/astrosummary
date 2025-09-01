@@ -1,6 +1,6 @@
 import type { LightFrame } from './types';
 
-export type ScanProgress = { files_scanned: number; files_matched: number }
+export type ScanProgress = { files_scanned: number; files_matched: number; total_files?: number }
 
 // scanFrames supports incremental progress via onProgress callback.
 export async function scanFrames({ backendPath, recurse }: { backendPath: string; recurse: boolean }, onProgress?: (p: ScanProgress) => void, onFrame?: (f: LightFrame) => void): Promise<{ frames: LightFrame[]; info?: any }> {
@@ -28,12 +28,12 @@ export async function scanFrames({ backendPath, recurse }: { backendPath: string
 				try {
 					const obj = JSON.parse(line)
 								if (obj.type === 'progress') {
-									onProgress?.({ files_scanned: obj.files_scanned, files_matched: obj.files_matched })
+									onProgress?.({ files_scanned: obj.files_scanned, files_matched: obj.files_matched, total_files: obj.total_files })
 								} else if (obj.type === 'frame') {
 									// notify caller immediately about the new frame
 									try { onFrame?.(obj.frame) } catch {}
 									frames.push(obj.frame)
-									onProgress?.({ files_scanned: obj.files_scanned ?? 0, files_matched: obj.files_matched ?? frames.length })
+									onProgress?.({ files_scanned: obj.files_scanned ?? 0, files_matched: obj.files_matched ?? frames.length, total_files: obj.total_files })
 								} else if (obj.type === 'done') {
 									return { frames, info: `Scanned ${obj.files_scanned} files, matched ${obj.files_matched}` }
 								}

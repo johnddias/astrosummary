@@ -7,7 +7,7 @@ import { normalizeFilter } from '../library/filters'
 import TargetFilterReport from './TargetFilterReport'
 
 export default function TargetDataVisualizer() {
-  const { frames, desiredHours, setDesiredHours, debugEnabled } = useApp()
+  const { frames, desiredHours, setDesiredHours, debugEnabled, scanning } = useApp()
   // per-filter ratio inputs (defaults to 1.0) - initialized from localStorage when possible
   const [haRatio, setHaRatio] = useState<number>(() => {
     try { const v = parseFloat(localStorage.getItem('ratio.ha') ?? ''); return isNaN(v) ? 1.0 : Math.round(v*10)/10 } catch { return 1.0 }
@@ -98,7 +98,9 @@ export default function TargetDataVisualizer() {
     return out
   }, [frames, haRatio, oiiiRatio, siiRatio, rRatio, gRatio, bRatio, lRatio])
 
-  const totals = useMemo(() => totalsByTarget(frames), [frames])
+  // while a scan is running, avoid updating charts live — compute totals only when not scanning
+  const framesForDisplay = scanning ? [] : frames
+  const totals = useMemo(() => totalsByTarget(framesForDisplay), [framesForDisplay])
   const targets = useMemo(() => Object.keys(totals).sort(), [totals])
 
   const multipleTargets = targets.length > 1
@@ -184,7 +186,7 @@ export default function TargetDataVisualizer() {
   {/* Scanning moved to Sidebar; status is available in AppContext if needed */}
 
       {targets.length === 0 && (
-        <div className="text-text-secondary">No LIGHT frames yet 201 run Scan from the sidebar.</div>
+        <div className="text-text-secondary">No LIGHT frames yet — run Scan from the sidebar.</div>
       )}
 
       {/* show the total-hours-by-filter summary only when more than one target exists */}

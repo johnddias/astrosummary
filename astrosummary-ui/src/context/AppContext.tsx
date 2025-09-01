@@ -23,6 +23,7 @@ type Ctx = {
   scanning: boolean
   onScan: () => Promise<void>
   status: string
+  scanProgress: { files_scanned: number; files_matched: number; total_files?: number }
   needsRescan: boolean
   setNeedsRescan: (v: boolean) => void
   // debug toggle exposed to UI
@@ -42,6 +43,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const [frames, setFrames] = useState<LightFrame[]>([])
   const [scanning, setScanning] = useState(false)
   const [status, setStatus] = useState('')
+  const [scanProgress, setScanProgress] = useState<{ files_scanned: number; files_matched: number; total_files?: number }>({ files_scanned: 0, files_matched: 0 })
   const [needsRescan, setNeedsRescan] = useState(false)
   const [debugEnabledState, setDebugEnabledState] = useState<boolean>(() => { try { return localStorage.getItem('debugEnabled') === '1' } catch { return false } })
   const setDebugEnabled = (v: boolean) => { setDebugEnabledState(v); try { localStorage.setItem('debugEnabled', v ? '1' : '0') } catch {} }
@@ -84,11 +86,18 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   setNeedsRescan(false)
   setScanning(true)
     try {
-      const collected: typeof frames = []
-      setFrames([])
+  setFrames([])
       const live: LightFrame[] = []
       const { frames: final, info } = await scanFrames({ backendPath, recurse }, (p) => {
-        try { setStatus(`Scanning: ${p.files_scanned} files scanned, ${p.files_matched} matched`) } catch {}
+        try {
+          // update structured progress state
+          setScanProgress({ files_scanned: p.files_scanned ?? 0, files_matched: p.files_matched ?? 0, total_files: p.total_files })
+          if (typeof p.total_files === 'number') {
+            setStatus(`Scanning: ${p.files_scanned} / ${p.total_files} files scanned, ${p.files_matched} matched`)
+          } else {
+            setStatus(`Scanning: ${p.files_scanned} files scanned, ${p.files_matched} matched`)
+          }
+        } catch {}
       }, (f) => {
         // Append normalized frame as it arrives so Sidebar shows live count
         const nf: LightFrame = {
@@ -97,8 +106,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
           exposure_s: typeof f.exposure_s === 'number' ? f.exposure_s : Number(f.exposure_s) || 0,
           frameType: (f.frameType as any) || 'LIGHT',
         }
-        live.push(nf)
-        setFrames((prev) => [...prev, nf])
+  live.push(nf)
+  setFrames((prev) => [...prev, nf])
       })
 
       // final normalization (in case any frames arrived in the final batch)
@@ -127,10 +136,11 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     frames, setFrames,
     desiredHours, setDesiredHours,
     scanning, onScan, status,
+    scanProgress,
     needsRescan, setNeedsRescan,
   debugEnabled: debugEnabledState,
   setDebugEnabled,
-  }), [mode, backendPath, recurse, frames, desiredHours, scanning, status, needsRescan, debugEnabledState])
+  }), [mode, backendPath, recurse, frames, desiredHours, scanning, status, needsRescan, debugEnabledState, scanProgress])
 
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>
 }

@@ -157,10 +157,17 @@ def stream_scan_directory(path: str, recurse: bool, extensions: List[str]):
     files_scanned = 0
     files_matched = 0
 
-    for fpath in _iter_paths(path, recurse, extensions):
+    # materialize the file list so the frontend can show a total file count up front
+    paths = list(_iter_paths(path, recurse, extensions))
+    total_files = len(paths)
+
+    # initial progress with total_files set (0 scanned yet)
+    yield json.dumps({ 'type': 'progress', 'total_files': total_files, 'files_scanned': 0, 'files_matched': 0 }) + '\n'
+
+    for fpath in paths:
         files_scanned += 1
-        # emit progress update for UI
-        yield json.dumps({ 'type': 'progress', 'files_scanned': files_scanned, 'files_matched': files_matched }) + '\n'
+        # emit progress update for UI (include total_files)
+        yield json.dumps({ 'type': 'progress', 'total_files': total_files, 'files_scanned': files_scanned, 'files_matched': files_matched }) + '\n'
         try:
             with fits.open(fpath, memmap=True) as hdul:
                 hdr = hdul[0].header if len(hdul) else {}
@@ -180,10 +187,11 @@ def stream_scan_directory(path: str, recurse: bool, extensions: List[str]):
                     'date': date,
                     'frameType': 'LIGHT',
                 }
-                yield json.dumps({ 'type': 'frame', 'frame': frame }) + '\n'
+                # include current counters and total_files so frontend can update progress together with the frame
+                yield json.dumps({ 'type': 'frame', 'frame': frame, 'files_scanned': files_scanned, 'files_matched': files_matched, 'total_files': total_files }) + '\n'
         except Exception:
             # skip silently
             continue
 
-    # final summary
-    yield json.dumps({ 'type': 'done', 'files_scanned': files_scanned, 'files_matched': files_matched }) + '\n'
+    # final summary (include total_files for completeness)
+    yield json.dumps({ 'type': 'done', 'total_files': total_files, 'files_scanned': files_scanned, 'files_matched': files_matched }) + '\n'
