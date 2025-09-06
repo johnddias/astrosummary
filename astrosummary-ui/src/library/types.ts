@@ -15,4 +15,4 @@ export type AstroBinRow = {
 };
 
 // Type for mode selection
-export type Mode = 'AstroBin Export' | 'Target Data Visualizer';
+export type Mode = 'Ratio Planner' | 'AstroBin Export' | 'Target Data Visualizer';

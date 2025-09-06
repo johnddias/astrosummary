@@ -34,7 +34,7 @@ type Ctx = {
 const AppContext = createContext<Ctx | undefined>(undefined)
 
 export function AppProvider({ children }: { children: React.ReactNode }) {
-  const [mode, setMode] = useState<Mode>('AstroBin Export')
+  const [mode, setMode] = useState<Mode>('Target Data Visualizer')
   const [backendPath, setBackendPathState] = useState<string>(() => { try { return localStorage.getItem('backendPath') ?? '' } catch { return '' } })
     const setBackendPath = (s: string) => { setBackendPathState(s); try { localStorage.setItem('backendPath', s) } catch {} ; try { apiSetSettings({ path: s, recurse }) } catch {} ; setNeedsRescan(true) }
 

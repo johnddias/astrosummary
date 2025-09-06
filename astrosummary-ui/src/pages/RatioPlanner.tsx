@@ -6,7 +6,7 @@ import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Legend } fro
 import { normalizeFilter } from '../library/filters'
 import TargetFilterReport from './TargetFilterReport'
 export default function RatioPlanner() {
-  const { frames, desiredHours, setDesiredHours, debugEnabled } = useApp()
+  const { frames, desiredHours, setDesiredHours, debugEnabled, scanning } = useApp()
   // per-filter ratio inputs (defaults to 1.0) - initialized from localStorage when possible
   const [haRatio, setHaRatio] = useState<number>(() => {
     try { const v = parseFloat(localStorage.getItem('ratio.ha') ?? ''); return isNaN(v) ? 1.0 : Math.round(v*10)/10 } catch { return 1.0 }
@@ -32,6 +32,9 @@ export default function RatioPlanner() {
   const [colorScheme, setColorScheme] = useState<string>(() => {
     try { return localStorage.getItem('chartPalette') || 'muted' } catch { return 'muted' }
   })
+  const [subframeMinutes, setSubframeMinutes] = useState<number>(() => {
+    try { const v = Number(localStorage.getItem('subframeMinutes')); return Number.isFinite(v) && v > 0 ? v : 5 } catch { return 5 }
+  })
   const [filterMode, setFilterMode] = useState<'narrowband'|'broadband'>(() => {
     try { return (localStorage.getItem('filterMode') as any) || 'narrowband' } catch { return 'narrowband' }
   })
@@ -39,6 +42,8 @@ export default function RatioPlanner() {
   useEffect(() => {
     try { localStorage.setItem('chartPalette', colorScheme) } catch {}
   }, [colorScheme])
+
+  useEffect(() => { try { localStorage.setItem('subframeMinutes', String(subframeMinutes)) } catch {} }, [subframeMinutes])
 
   // persist filter mode and ratios
   useEffect(() => {
@@ -82,6 +87,8 @@ export default function RatioPlanner() {
   }
   const colors = palettes[colorScheme] || palettes.muted
 
+  const framesForDisplay = scanning ? [] : frames
+
   const goal = useMemo(() => {
     // Always use explicit per-filter inputs as the goal weights
     const out: Record<string, number> = {}
@@ -92,12 +99,13 @@ export default function RatioPlanner() {
     out['G'] = gRatio || 1.0
     out['B'] = bRatio || 1.0
     out['L'] = lRatio || 1.0
-    // if no frames, fallback to equal goal behavior
-    if (frames.length === 0) return computeEqualGoal(frames)
+  // if user hasn't provided any non-zero weights, fallback to equal goal behavior
+  const sumWeights = Object.values(out).reduce((a, b) => a + (b || 0), 0)
+  if (sumWeights === 0) return computeEqualGoal(framesForDisplay)
     return out
   }, [frames, haRatio, oiiiRatio, siiRatio, rRatio, gRatio, bRatio, lRatio])
 
-  const totals = useMemo(() => totalsByTarget(frames), [frames])
+  const totals = useMemo(() => totalsByTarget(framesForDisplay), [framesForDisplay])
   const targets = useMemo(() => Object.keys(totals).sort(), [totals])
 
   const multipleTargets = targets.length > 1
@@ -115,6 +123,18 @@ export default function RatioPlanner() {
             placeholder="e.g. 20"
             value={desiredHours ?? 20}
             onChange={(e) => setDesiredHours(e.target.value ? Number(e.target.value) : 20)}
+          />
+        </div>
+
+        <div className="flex flex-col">
+          <label className="text-xs text-text-secondary">Subframe length (minutes)</label>
+          <input
+            type="number"
+            step="1"
+            min="1"
+            className="px-3 py-2 rounded-xl bg-slate-800 border border-slate-700"
+            value={subframeMinutes}
+            onChange={(e) => setSubframeMinutes(Number(e.target.value || 1))}
           />
         </div>
 
@@ -232,11 +252,13 @@ export default function RatioPlanner() {
               const needed = Number(Math.max(0, targetH - capturedH).toFixed(2))
               const overshoot = Number(Math.max(0, capturedH - targetH).toFixed(2))
               const capturedVis = Number(Math.min(captured, targetH).toFixed(2))
+              const subsNeeded = Math.ceil((needed * 60) / subframeMinutes)
               return {
                 filter,
                 captured,
                 capturedVis,
                 needed,
+                subsNeeded,
                 overshoot,
                 target: Number(targetH.toFixed(2)),
               }
@@ -292,7 +314,8 @@ export default function RatioPlanner() {
                             <div style={{ fontWeight: 600, marginBottom: 6 }}>{label}</div>
                             <div style={{ color: '#20c945', marginBottom: 4 }}>Captured (h) : {p.captured?.toFixed(2)} h</div>
                             <div style={{ color: '#4892db', marginBottom: 4 }}>Needed (h) : {p.needed?.toFixed(2)} h</div>
-                            <div style={{ color: 'hsla(64, 80%, 43%, 1.00)', marginBottom: 4 }}>Overshoot (h) : {p.overshoot?.toFixed(2)} h</div>
+                              <div style={{ color: 'hsla(64, 80%, 43%, 1.00)', marginBottom: 4 }}>Overshoot (h) : {p.overshoot?.toFixed(2)} h</div>
+                              <div style={{ color: '#F59E0B', marginBottom: 4 }}>Subs needed (@{subframeMinutes}m): {p.subsNeeded ?? 0}</div>
                             <div style={{ color: '#9CA3AF' }}>Target (h) : {p.target?.toFixed(2)} h</div>
                           </div>
                         )
