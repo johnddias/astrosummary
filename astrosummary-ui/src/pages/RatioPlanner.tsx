@@ -99,8 +99,9 @@ export default function RatioPlanner() {
     out['G'] = gRatio || 1.0
     out['B'] = bRatio || 1.0
     out['L'] = lRatio || 1.0
-    // if no frames, fallback to equal goal behavior
-    if (framesForDisplay.length === 0) return computeEqualGoal(framesForDisplay)
+  // if user hasn't provided any non-zero weights, fallback to equal goal behavior
+  const sumWeights = Object.values(out).reduce((a, b) => a + (b || 0), 0)
+  if (sumWeights === 0) return computeEqualGoal(framesForDisplay)
     return out
   }, [frames, haRatio, oiiiRatio, siiRatio, rRatio, gRatio, bRatio, lRatio])
 
