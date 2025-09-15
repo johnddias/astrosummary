@@ -29,9 +29,7 @@ export default function RatioPlanner() {
   const [lRatio, setLRatio] = useState<number>(() => {
     try { const v = parseFloat(localStorage.getItem('ratio.l') ?? ''); return isNaN(v) ? 1.0 : Math.round(v*10)/10 } catch { return 1.0 }
   })
-  const [colorScheme, setColorScheme] = useState<string>(() => {
-    try { return localStorage.getItem('chartPalette') || 'muted' } catch { return 'muted' }
-  })
+  const { colors } = useApp()
   const [subframeMinutes, setSubframeMinutes] = useState<number>(() => {
     try { const v = Number(localStorage.getItem('subframeMinutes')); return Number.isFinite(v) && v > 0 ? v : 5 } catch { return 5 }
   })
@@ -39,9 +37,7 @@ export default function RatioPlanner() {
     try { return (localStorage.getItem('filterMode') as any) || 'narrowband' } catch { return 'narrowband' }
   })
 
-  useEffect(() => {
-    try { localStorage.setItem('chartPalette', colorScheme) } catch {}
-  }, [colorScheme])
+  // colors is provided by AppContext (chosen from Sidebar)
 
   useEffect(() => { try { localStorage.setItem('subframeMinutes', String(subframeMinutes)) } catch {} }, [subframeMinutes])
 
@@ -59,33 +55,7 @@ export default function RatioPlanner() {
     } catch {}
   }, [filterMode, haRatio, oiiiRatio, siiRatio, rRatio, gRatio, bRatio, lRatio])
 
-  const palettes: Record<string, any> = {
-    highContrast: {
-      captured: '#10B981', // emerald
-      needed: '#3B82F6', // blue
-      overshoot: '#F59E0B', // amber
-      targetStroke: '#F3F4F6',
-      targetFill: 'rgba(255,255,255,0.06)',
-      axis: '#E5E7EB'
-    },
-    colorBlind: {
-      captured: '#0072B2',
-      needed: '#E69F00',
-      overshoot: '#009E73',
-      targetStroke: '#FFFFFF',
-      targetFill: 'rgba(255,255,255,0.06)',
-      axis: '#E6E6E6'
-    },
-    muted: {
-      captured: '#34D399',
-      needed: '#60A5FA',
-      overshoot: '#FCA5A5',
-      targetStroke: '#CBD5E1',
-      targetFill: 'rgba(203,213,225,0.06)',
-      axis: '#9CA3AF'
-    }
-  }
-  const colors = palettes[colorScheme] || palettes.muted
+  // colors comes from context
 
   const framesForDisplay = scanning ? [] : frames
 
@@ -185,18 +155,7 @@ export default function RatioPlanner() {
         </div>
 
   {/* custom ratios removed - using explicit per-filter inputs instead */}
-        <div className="flex flex-col">
-          <label className="text-xs text-text-secondary">Color scheme</label>
-          <select
-            className="px-3 py-2 rounded-xl bg-slate-800 border border-slate-700"
-            value={colorScheme}
-            onChange={(e) => setColorScheme(e.target.value)}
-          >
-            <option value="muted">Muted (default)</option>
-            <option value="highContrast">High contrast</option>
-            <option value="colorBlind">Color-blind friendly</option>
-          </select>
-        </div>
+        
 
       </div>
 

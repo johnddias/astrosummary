@@ -29,6 +29,10 @@ type Ctx = {
   // debug toggle exposed to UI
   debugEnabled: boolean
   setDebugEnabled: (v: boolean) => void
+  // global chart color scheme
+  colorScheme: string
+  setColorScheme: (s: string) => void
+  colors: Record<string, string>
 }
 
 const AppContext = createContext<Ctx | undefined>(undefined)
@@ -47,6 +51,36 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const [needsRescan, setNeedsRescan] = useState(false)
   const [debugEnabledState, setDebugEnabledState] = useState<boolean>(() => { try { return localStorage.getItem('debugEnabled') === '1' } catch { return false } })
   const setDebugEnabled = (v: boolean) => { setDebugEnabledState(v); try { localStorage.setItem('debugEnabled', v ? '1' : '0') } catch {} }
+  const [colorScheme, setColorSchemeState] = useState<string>(() => { try { return localStorage.getItem('chartPalette') || 'muted' } catch { return 'muted' } })
+  const setColorScheme = (s: string) => { setColorSchemeState(s); try { localStorage.setItem('chartPalette', s) } catch {} }
+
+  const palettes: Record<string, any> = {
+    highContrast: {
+      captured: '#10B981', // emerald
+      needed: '#3B82F6', // blue
+      overshoot: '#F59E0B', // amber
+      targetStroke: '#F3F4F6',
+      targetFill: 'rgba(255,255,255,0.06)',
+      axis: '#E5E7EB'
+    },
+    colorBlind: {
+      captured: '#0072B2',
+      needed: '#E69F00',
+      overshoot: '#009E73',
+      targetStroke: '#FFFFFF',
+      targetFill: 'rgba(255,255,255,0.06)',
+      axis: '#E6E6E6'
+    },
+    muted: {
+      captured: '#34D399',
+      needed: '#60A5FA',
+      overshoot: '#FCA5A5',
+      targetStroke: '#CBD5E1',
+      targetFill: 'rgba(203,213,225,0.06)',
+      axis: '#9CA3AF'
+    }
+  }
+  const colors = palettes[colorScheme] || palettes.muted
     const [desiredHours, setDesiredHoursState] = useState<number | undefined>(() => {
         try {
           const s = localStorage.getItem('desiredHours')
@@ -141,7 +175,10 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     needsRescan, setNeedsRescan,
   debugEnabled: debugEnabledState,
   setDebugEnabled,
-  }), [mode, backendPath, recurse, frames, desiredHours, scanning, status, needsRescan, debugEnabledState, scanProgress])
+  colorScheme,
+  setColorScheme,
+  colors,
+  }), [mode, backendPath, recurse, frames, desiredHours, scanning, status, needsRescan, debugEnabledState, scanProgress, colorScheme, colors])
 
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>
 }

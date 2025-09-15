@@ -2,10 +2,10 @@ import type { Mode } from '../library/types'
 import { useApp } from '../context/AppContext'
 import classNames from 'classnames'
 
-const MODES: Mode[] = ['Target Data Visualizer', 'AstroBin Export']
+const MODES: Mode[] = ['Target Data Visualizer', 'AstroBin Export', 'NINA Analyzer']
 
 export default function Sidebar() {
-  const { mode, setMode, backendPath, setBackendPath, recurse, setRecurse, frames, needsRescan, scanProgress, status, scanning, onScan, debugEnabled, setDebugEnabled } = useApp()
+  const { mode, setMode, backendPath, setBackendPath, recurse, setRecurse, frames, needsRescan, scanProgress, status, scanning, onScan, debugEnabled, setDebugEnabled, colorScheme, setColorScheme } = useApp()
 
   return (
     <aside className="w-72 shrink-0 h-screen bg-bg-sidebar border-r border-slate-700 p-4 flex flex-col gap-4">
@@ -26,7 +26,7 @@ export default function Sidebar() {
         ))}
       </div>
 
-      <div className="mt-4 space-y-3">
+  <div className="mt-4 space-y-3">
 
         <div className="space-y-1">
           <label className="text-sm text-text-secondary">Path to .fits files</label>
@@ -58,6 +58,15 @@ export default function Sidebar() {
           <input type="checkbox" checked={recurse} onChange={(e) => setRecurse(e.target.checked)} />
           Recurse subfolders
         </label>
+
+        <div>
+          <label className="text-sm text-text-secondary">Chart color scheme</label>
+          <select className="w-full px-3 py-2 rounded-xl bg-slate-800 border border-slate-700 mt-1" value={colorScheme} onChange={(e) => setColorScheme(e.target.value)}>
+            <option value="muted">Muted (default)</option>
+            <option value="highContrast">High contrast</option>
+            <option value="colorBlind">Color-blind friendly</option>
+          </select>
+        </div>
 
         <div className="text-xs text-text-secondary">
           Current LIGHT frames: <span className="text-white">{frames.length}</span>
