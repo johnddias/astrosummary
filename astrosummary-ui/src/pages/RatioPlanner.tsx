@@ -268,22 +268,29 @@ export default function RatioPlanner() {
                       content={({ payload, label, active }: any) => {
                         if (!active || !payload || !payload.length) return null
                         const p = payload[0].payload
+                        const fmt = (v: number|undefined) => {
+                          if (typeof v !== 'number' || !isFinite(v)) return '0:00'
+                          const totalMinutes = Math.round(v * 60)
+                          const hrs = Math.floor(totalMinutes / 60)
+                          const mins = totalMinutes % 60
+                          return `${hrs}:${String(mins).padStart(2, '0')}`
+                        }
                         return (
                           <div style={{ background: '#0F172A', border: '1px solid #1F2937', color: '#F9FAFB', padding: 12 }}>
                             <div style={{ fontWeight: 600, marginBottom: 6 }}>{label}</div>
-                            <div style={{ color: '#20c945', marginBottom: 4 }}>Captured (h) : {p.captured?.toFixed(2)} h</div>
-                            <div style={{ color: '#4892db', marginBottom: 4 }}>Needed (h) : {p.needed?.toFixed(2)} h</div>
-                              <div style={{ color: 'hsla(64, 80%, 43%, 1.00)', marginBottom: 4 }}>Overshoot (h) : {p.overshoot?.toFixed(2)} h</div>
+                            <div style={{ color: '#20c945', marginBottom: 4 }}>Captured : {fmt(p.captured)}</div>
+                            <div style={{ color: '#4892db', marginBottom: 4 }}>Needed : {fmt(p.needed)}</div>
+                              <div style={{ color: 'hsla(64, 80%, 43%, 1.00)', marginBottom: 4 }}>Overshoot : {fmt(p.overshoot)}</div>
                               <div style={{ color: '#F59E0B', marginBottom: 4 }}>Subs needed (@{subframeMinutes}m): {p.subsNeeded ?? 0}</div>
-                            <div style={{ color: '#9CA3AF' }}>Target (h) : {p.target?.toFixed(2)} h</div>
+                            <div style={{ color: '#9CA3AF' }}>Target : {fmt(p.target)}</div>
                           </div>
                         )
                       }}
                     />
                     <Legend />
-                    <Bar dataKey="capturedVis"  stackId="a" name="Captured (h)"  fill={colors.captured} />
-                    <Bar dataKey="needed"    stackId="a" name="Needed (h)"    fill={colors.needed} />
-                    <Bar dataKey="overshoot" stackId="a" name="Overshoot (h)" fill={colors.overshoot} />
+                    <Bar dataKey="capturedVis"  stackId="a" name="Captured"  fill={colors.captured} />
+                    <Bar dataKey="needed"    stackId="a" name="Needed"    fill={colors.needed} />
+                    <Bar dataKey="overshoot" stackId="a" name="Overshoot" fill={colors.overshoot} />
                     {/* target value shown on hover only (removed visual marker) */}
                   </BarChart>
                 </ResponsiveContainer>

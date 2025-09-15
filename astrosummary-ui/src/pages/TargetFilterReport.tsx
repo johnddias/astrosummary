@@ -66,11 +66,17 @@ export default function TargetFilterReport() {
                 cursor={{ fill: 'transparent' }}
                 contentStyle={{ background: '#0F172A', border: '1px solid #1F2937', color: '#F9FAFB' }}
                 formatter={(value: any) => {
-                  if (typeof value === 'number') return `${value.toFixed(1)} h`
+                  if (typeof value === 'number') {
+                    // value is hours as float; format to H:MM (no unit)
+                    const totalMinutes = Math.round(value * 60)
+                    const hrs = Math.floor(totalMinutes / 60)
+                    const mins = totalMinutes % 60
+                    return `${hrs}:${String(mins).padStart(2, '0')}`
+                  }
                   return value
                 }}
               />
-              <Bar dataKey="hours" name="Hours" fill={colors.captured} />
+              <Bar dataKey="hours" fill={colors.captured} />
             </BarChart>
           </ResponsiveContainer>
         </div>

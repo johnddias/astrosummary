@@ -22,15 +22,11 @@ function TotalsBar({totals}:{totals:Record<string, number>}){
 
 function formatSec(s: number){
   if(!isFinite(s) || s<=0) return '0:00'
-  const seconds = Math.round(s)
-  const mins = Math.floor(seconds/60)
-  const secs = seconds%60
-  if(mins > 59){
-    const hrs = Math.floor(mins/60)
-    const remm = mins%60
-    return `${String(hrs).padStart(2,'0')}:${String(remm).padStart(2,'0')}:${String(secs).padStart(2,'0')}`
-  }
-  return `${mins}:${String(secs).padStart(2,'0')}`
+  // Round to nearest minute and format as H:MM (hours:minutes)
+  const totalMinutes = Math.round(s / 60)
+  const hrs = Math.floor(totalMinutes / 60)
+  const mins = totalMinutes % 60
+  return `${String(hrs).padStart(1,'0')}:${String(mins).padStart(2,'0')}`
 }
 
 export default function NinaAnalyzer() {
