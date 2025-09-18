@@ -2,7 +2,7 @@ import React, { createContext, useContext, useEffect, useMemo, useState } from '
 import { apiGetSettings, apiSetSettings } from '../library/api'
 import { scanFrames } from '../library/scan'
 import { normalizeFilter } from '../library/filters'
-import type { LightFrame, Mode } from '../library/types'
+import type { LightFrame, Mode, RejectionData } from '../library/types'
 
 type Ctx = {
   mode: Mode
@@ -16,6 +16,12 @@ type Ctx = {
 
   frames: LightFrame[]
   setFrames: (f: LightFrame[]) => void
+  rejectionData?: RejectionData
+  setRejectionData: (r: RejectionData | undefined) => void
+
+  // Rejection filtering
+  applyRejectionFilter: boolean
+  setApplyRejectionFilter: (v: boolean) => void
 
   desiredHours?: number
   setDesiredHours: (v: number | undefined) => void
@@ -45,6 +51,14 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const [recurse, setRecurseState] = useState<boolean>(() => { try { const v = localStorage.getItem('recurse'); return v == null ? true : v === '1' } catch { return true } })
     const setRecurse = (v: boolean) => { setRecurseState(v); try { localStorage.setItem('recurse', v ? '1' : '0') } catch {} ; try { apiSetSettings({ path: backendPath, recurse: v }) } catch {} ; setNeedsRescan(true) }
   const [frames, setFrames] = useState<LightFrame[]>([])
+  const [rejectionData, setRejectionData] = useState<RejectionData | undefined>(undefined)
+  const [applyRejectionFilter, setApplyRejectionFilterState] = useState<boolean>(() => { 
+    try { return localStorage.getItem('applyRejectionFilter') === '1' } catch { return false } 
+  })
+  const setApplyRejectionFilter = (v: boolean) => { 
+    setApplyRejectionFilterState(v); 
+    try { localStorage.setItem('applyRejectionFilter', v ? '1' : '0') } catch {} 
+  }
   const [scanning, setScanning] = useState(false)
   const [status, setStatus] = useState('')
   const [scanProgress, setScanProgress] = useState<{ files_scanned: number; files_matched: number; total_files?: number }>({ files_scanned: 0, files_matched: 0 })
@@ -122,7 +136,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     try {
   setFrames([])
       const live: LightFrame[] = []
-      const { frames: final, info } = await scanFrames({ backendPath, recurse }, (p) => {
+      const { frames: final, info, rejectionData: scanRejectionData } = await scanFrames({ backendPath, recurse }, (p) => {
         try {
           // update structured progress state
           setScanProgress({ files_scanned: p.files_scanned ?? 0, files_matched: p.files_matched ?? 0, total_files: p.total_files })
@@ -154,6 +168,12 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       }))
       // prefer the live-accumulated frames if present, otherwise set final
       if (live.length === 0) setFrames(normalized)
+      
+      // Set rejection data if found
+      if (scanRejectionData) {
+        setRejectionData(scanRejectionData)
+      }
+      
       setStatus(info)
     } catch (err) {
       setStatus('Scan failed')
@@ -169,6 +189,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     recurse: recurse,
     setRecurse,
     frames, setFrames,
+    rejectionData, setRejectionData,
+    applyRejectionFilter, setApplyRejectionFilter,
     desiredHours, setDesiredHours,
     scanning, onScan, status,
     scanProgress,
@@ -178,7 +200,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   colorScheme,
   setColorScheme,
   colors,
-  }), [mode, backendPath, recurse, frames, desiredHours, scanning, status, needsRescan, debugEnabledState, scanProgress, colorScheme, colors])
+  }), [mode, backendPath, recurse, frames, rejectionData, applyRejectionFilter, desiredHours, scanning, status, needsRescan, debugEnabledState, scanProgress, colorScheme, colors])
 
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>
 }

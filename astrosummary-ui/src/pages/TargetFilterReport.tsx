@@ -36,12 +36,15 @@ function getColors() {
 }
 
 export default function TargetFilterReport() {
-  const { frames } = useApp()
+  const { frames, applyRejectionFilter } = useApp()
   const colors = getColors()
 
   const rows = useMemo(() => {
+    // Filter frames based on rejection setting
+    const framesToUse = applyRejectionFilter ? frames.filter(f => !f.rejected) : frames
+    
     const by = new Map<string, number>()
-    for (const f of frames) {
+    for (const f of framesToUse) {
       if (f.frameType !== 'LIGHT') continue
       const k = f.filter || 'Unknown'
       const hours = (f.exposure_s ?? 0) / 3600
@@ -50,7 +53,7 @@ export default function TargetFilterReport() {
     return Array.from(by.entries())
       .map(([filter, hours]) => ({ filter, hours }))
       .sort((a, b) => a.filter.localeCompare(b.filter))
-  }, [frames])
+  }, [frames, applyRejectionFilter])
 
   return (
     <div className="space-y-4">

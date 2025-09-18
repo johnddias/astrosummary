@@ -1,10 +1,11 @@
 from __future__ import annotations
 import os, re
 from datetime import datetime
-from typing import Dict, Iterable, List, Tuple
+from typing import Dict, Iterable, List, Tuple, Optional, Set
 from astropy.io import fits
 import unicodedata
 import json
+from pathlib import Path
 
 CANON = {
     "ha": "Ha", "hα": "Ha", "h-a": "Ha", "halpha": "Ha",
@@ -101,10 +102,154 @@ def _parse_type(hdr) -> str:
     if "BIAS"  in s or "OFFSET" in s: return "BIAS"
     return "OTHER"
 
+def _find_rejection_logs(root_path: str, recurse: bool) -> List[str]:
+    """Find ProcessLogger.txt and similar rejection log files."""
+    rejection_logs = []
+    log_patterns = ["ProcessLogger.txt", "processlogger.txt", "*rejection*.txt", "*reject*.log"]
+    
+    if recurse:
+        for dirpath, _, filenames in os.walk(root_path):
+            for filename in filenames:
+                if any(filename.lower() == pattern.lower() or 
+                      ('*' in pattern and pattern.replace('*', '').lower() in filename.lower())
+                      for pattern in log_patterns):
+                    rejection_logs.append(os.path.join(dirpath, filename))
+    else:
+        for filename in os.listdir(root_path):
+            filepath = os.path.join(root_path, filename)
+            if os.path.isfile(filepath) and any(
+                filename.lower() == pattern.lower() or 
+                ('*' in pattern and pattern.replace('*', '').lower() in filename.lower())
+                for pattern in log_patterns
+            ):
+                rejection_logs.append(filepath)
+    
+    return rejection_logs
+
+def _is_frame_rejected(filename: str, rejected_filenames: Set[str]) -> bool:
+    """
+    Check if a frame is rejected, handling filename transformations.
+    
+    Handles cases where ProcessLogger contains calibrated names like 'file_c_lps.xisf'
+    but the scan finds raw files like 'file.fit'.
+    """
+    if not rejected_filenames:
+        return False
+    
+    # Direct match first
+    if filename in rejected_filenames:
+        return True
+    
+    # Try matching without extension
+    name_without_ext = Path(filename).stem
+    for rejected_name in rejected_filenames:
+        rejected_stem = Path(rejected_name).stem
+        if name_without_ext == rejected_stem:
+            return True
+    
+    # Try matching with common calibration suffix patterns removed
+    base_name = name_without_ext
+    # Remove common suffixes that might be added during calibration
+    calibration_suffixes = ['_c_lps', '_c', '_lps', '_cc', '_cal', '_calibrated']
+    for suffix in calibration_suffixes:
+        if base_name.endswith(suffix):
+            base_name = base_name[:-len(suffix)]
+            break
+    
+    # Check if any rejected file matches this base name
+    for rejected_name in rejected_filenames:
+        rejected_stem = Path(rejected_name).stem
+        # Remove calibration suffixes from rejected names too
+        rejected_base = rejected_stem
+        for suffix in calibration_suffixes:
+            if rejected_base.endswith(suffix):
+                rejected_base = rejected_base[:-len(suffix)]
+                break
+        
+        if base_name == rejected_base:
+            return True
+    
+    return False
+
+def _parse_rejection_logs(log_paths: List[str]) -> Optional[Dict]:
+    """Parse found rejection logs and return combined rejection data."""
+    if not log_paths:
+        return None
+    
+    try:
+        # Try to import parser
+        from rejection_log_parser import parse_rejection_log
+        
+        all_rejected_frames = set()
+        all_quality_data = {}
+        
+        for log_path in log_paths:
+            try:
+                result = parse_rejection_log(log_path)
+                all_rejected_frames.update(result.get('rejected_frames', []))
+                all_quality_data.update(result.get('quality_data', {}))
+            except Exception:
+                continue  # Skip problematic logs
+        
+        if all_rejected_frames:
+            return {
+                'rejected_frames': list(all_rejected_frames),
+                'quality_data': all_quality_data,
+                'rejection_logs': log_paths,
+                'rejected_count': len(all_rejected_frames)
+            }
+    except ImportError:
+        pass  # Parser not available
+    
+    return None
+    """Parse found rejection logs and return combined rejection data."""
+    if not log_paths:
+        return None
+    
+    try:
+        # Try to import parser
+        from rejection_log_parser import parse_rejection_log
+        
+        all_rejected_frames = set()
+        all_quality_data = {}
+        
+        for log_path in log_paths:
+            try:
+                result = parse_rejection_log(log_path)
+                all_rejected_frames.update(result.get('rejected_frames', []))
+                all_quality_data.update(result.get('quality_data', {}))
+            except Exception:
+                continue  # Skip problematic logs
+        
+        if all_rejected_frames:
+            return {
+                'rejected_frames': list(all_rejected_frames),
+                'quality_data': all_quality_data,
+                'rejection_logs': log_paths,
+                'rejected_count': len(all_rejected_frames)
+            }
+    except ImportError:
+        pass  # Parser not available
+    
+    return None
+
 def scan_directory(path: str, recurse: bool, extensions: List[str]):
     frames: List[Dict] = []
     files_scanned = 0
     files_matched = 0
+
+    # Look for rejection logs
+    rejection_logs = _find_rejection_logs(path, recurse)
+    rejection_data = _parse_rejection_logs(rejection_logs)
+    rejected_filenames = set(rejection_data.get('rejected_frames', [])) if rejection_data else set()
+    
+    # Debug logging
+    print(f"DEBUG scan_directory: Found {len(rejection_logs)} rejection logs")
+    if rejection_data:
+        print(f"DEBUG scan_directory: Parsed {len(rejected_filenames)} rejected frames")
+        print(f"DEBUG scan_directory: Sample rejected files: {list(rejected_filenames)[:3]}")
+    else:
+        print("DEBUG scan_directory: No rejection data parsed")
 
     for fpath in _iter_paths(path, recurse, extensions):
         files_scanned += 1
@@ -114,24 +259,42 @@ def scan_directory(path: str, recurse: bool, extensions: List[str]):
                 frame_type = _parse_type(hdr)
                 if frame_type != "LIGHT":
                     continue
+                
+                # Check if this frame is rejected
+                filename = Path(fpath).name
+                is_rejected = _is_frame_rejected(filename, rejected_filenames)
+                
                 files_matched += 1
                 target = _parse_target(hdr, fpath)
                 filt   = _parse_filter(hdr, fpath)
                 expo   = _parse_exposure(hdr)
                 date   = _parse_date(hdr)
 
-                frames.append({
+                frame_data = {
                     "target": target,
                     "filter": filt,
                     "exposure_s": float(expo),
                     "date": date,
                     "frameType": "LIGHT",
-                })
+                    "file_path": fpath,
+                }
+                
+                # Add rejection info if available
+                if rejection_data:
+                    frame_data["rejected"] = is_rejected
+                
+                frames.append(frame_data)
         except Exception:
             # Skip unreadable/corrupt files silently for MVP
             continue
 
-    return frames, files_scanned, files_matched
+    result = frames, files_scanned, files_matched
+    
+    # Add rejection metadata if found
+    if rejection_data:
+        return result + (rejection_data,)
+    
+    return result
 
 
 def stream_scan_directory(path: str, recurse: bool, extensions: List[str]):
@@ -140,10 +303,23 @@ def stream_scan_directory(path: str, recurse: bool, extensions: List[str]):
     Events:
       { type: 'progress', files_scanned: int, files_matched: int }
       { type: 'frame', frame: { ... } }
-      { type: 'done', files_scanned: int, files_matched: int }
+      { type: 'done', files_scanned: int, files_matched: int, rejection_data?: {...} }
     """
     files_scanned = 0
     files_matched = 0
+
+    # Look for rejection logs
+    rejection_logs = _find_rejection_logs(path, recurse)
+    rejection_data = _parse_rejection_logs(rejection_logs)
+    rejected_filenames = set(rejection_data.get('rejected_frames', [])) if rejection_data else set()
+    
+    # Debug logging for stream scan
+    print(f"DEBUG stream_scan: Found {len(rejection_logs)} rejection logs")
+    if rejection_data:
+        print(f"DEBUG stream_scan: Parsed {len(rejected_filenames)} rejected frames")
+        print(f"DEBUG stream_scan: Sample rejected files: {list(rejected_filenames)[:3]}")
+    else:
+        print("DEBUG stream_scan: No rejection data parsed")
 
     # materialize the file list so the frontend can show a total file count up front
     paths = list(_iter_paths(path, recurse, extensions))
@@ -162,6 +338,11 @@ def stream_scan_directory(path: str, recurse: bool, extensions: List[str]):
                 frame_type = _parse_type(hdr)
                 if frame_type != 'LIGHT':
                     continue
+                
+                # Check if this frame is rejected
+                filename = Path(fpath).name
+                is_rejected = _is_frame_rejected(filename, rejected_filenames)
+                
                 files_matched += 1
                 target = _parse_target(hdr, fpath)
                 filt   = _parse_filter(hdr, fpath)
@@ -174,12 +355,28 @@ def stream_scan_directory(path: str, recurse: bool, extensions: List[str]):
                     'exposure_s': float(expo),
                     'date': date,
                     'frameType': 'LIGHT',
+                    'file_path': fpath,
                 }
+                
+                # Add rejection info if available
+                if rejection_data:
+                    frame['rejected'] = is_rejected
+                
                 # include current counters and total_files so frontend can update progress together with the frame
                 yield json.dumps({ 'type': 'frame', 'frame': frame, 'files_scanned': files_scanned, 'files_matched': files_matched, 'total_files': total_files }) + '\n'
         except Exception:
             # skip silently
             continue
 
-    # final summary (include total_files for completeness)
-    yield json.dumps({ 'type': 'done', 'total_files': total_files, 'files_scanned': files_scanned, 'files_matched': files_matched }) + '\n'
+    # final summary (include rejection_data if found)
+    done_event = { 'type': 'done', 'total_files': total_files, 'files_scanned': files_scanned, 'files_matched': files_matched }
+    if rejection_data:
+        done_event['rejection_data'] = rejection_data
+    
+    # Debug logging for done event
+    print(f"DEBUG stream_scan done: rejection_data present: {rejection_data is not None}")
+    if rejection_data:
+        print(f"DEBUG stream_scan done: rejection_data keys: {list(rejection_data.keys())}")
+    print(f"DEBUG stream_scan done: done_event keys: {list(done_event.keys())}")
+    
+    yield json.dumps(done_event) + '\n'

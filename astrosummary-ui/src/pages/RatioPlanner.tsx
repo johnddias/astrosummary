@@ -6,7 +6,7 @@ import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Legend } fro
 import { normalizeFilter } from '../library/filters'
 import TargetFilterReport from './TargetFilterReport'
 export default function RatioPlanner() {
-  const { frames, desiredHours, setDesiredHours, debugEnabled, scanning } = useApp()
+  const { frames, desiredHours, setDesiredHours, debugEnabled, scanning, applyRejectionFilter } = useApp()
   // per-filter ratio inputs (defaults to 1.0) - initialized from localStorage when possible
   const [haRatio, setHaRatio] = useState<number>(() => {
     try { const v = parseFloat(localStorage.getItem('ratio.ha') ?? ''); return isNaN(v) ? 1.0 : Math.round(v*10)/10 } catch { return 1.0 }
@@ -75,7 +75,7 @@ export default function RatioPlanner() {
     return out
   }, [frames, haRatio, oiiiRatio, siiRatio, rRatio, gRatio, bRatio, lRatio])
 
-  const totals = useMemo(() => totalsByTarget(framesForDisplay), [framesForDisplay])
+  const totals = useMemo(() => totalsByTarget(framesForDisplay, applyRejectionFilter), [framesForDisplay, applyRejectionFilter])
   const targets = useMemo(() => Object.keys(totals).sort(), [totals])
 
   const multipleTargets = targets.length > 1

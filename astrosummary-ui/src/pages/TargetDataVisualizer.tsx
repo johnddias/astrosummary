@@ -1,13 +1,14 @@
+
 import { useMemo, useState, useEffect } from 'react'
 import { useApp } from '../context/AppContext'
-import { totalsByTarget, computeEqualGoal } from '../library/analysis'
+import { totalsByTarget, computeEqualGoal, getRejectionStats } from '../library/analysis'
 import ChartCard from '../components/ChartCard'
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Legend } from 'recharts'
 import { normalizeFilter } from '../library/filters'
 import TargetFilterReport from './TargetFilterReport'
 
 export default function TargetDataVisualizer() {
-  const { frames, desiredHours, setDesiredHours, debugEnabled, scanning } = useApp()
+  const { frames, desiredHours, setDesiredHours, debugEnabled, scanning, rejectionData, applyRejectionFilter, setApplyRejectionFilter } = useApp()
   // per-filter ratio inputs (defaults to 1.0) - initialized from localStorage when possible
   const [haRatio, setHaRatio] = useState<number>(() => {
     try { const v = parseFloat(localStorage.getItem('ratio.ha') ?? ''); return isNaN(v) ? 1.0 : Math.round(v*10)/10 } catch { return 1.0 }
@@ -99,15 +100,32 @@ export default function TargetDataVisualizer() {
   }, [frames, haRatio, oiiiRatio, siiRatio, rRatio, gRatio, bRatio, lRatio])
 
   // while a scan is running, avoid updating charts live — compute totals only when not scanning
-  const framesForDisplay = scanning ? [] : frames
-  const totals = useMemo(() => totalsByTarget(framesForDisplay), [framesForDisplay])
+  const framesForDisplay = useMemo(() => {
+    if (scanning) return [];
+    if (!applyRejectionFilter || !rejectionData) return frames;
+    const rejectedSet = new Set(
+      (rejectionData.rejected_frames ?? []).map(f =>
+        f.replace(/\.fit[s]?$/i, '').toLowerCase()
+      )
+    );
+    return frames.filter(f => {
+      const fname = (f.file_path ?? '').split(/[\\/]/).pop()?.toLowerCase().replace(/\.fit[s]?$/i, '');
+      return fname && !rejectedSet.has(fname);
+    });
+  }, [frames, scanning, applyRejectionFilter, rejectionData])
+
+  const totals = useMemo(() => totalsByTarget(framesForDisplay, applyRejectionFilter), [framesForDisplay, applyRejectionFilter])
   const targets = useMemo(() => Object.keys(totals).sort(), [totals])
+  
+  const rejectionStats = useMemo(() => getRejectionStats(frames), [frames])
 
   const multipleTargets = targets.length > 1
 
+  // Remove all debug logs and temporary debug UI
+
   return (
     <div className="space-y-4">
-  <div className="flex flex-wrap items-start gap-3">
+      <div className="flex flex-wrap items-start gap-3">
 
         <div className="flex flex-col">
           <label className="text-xs text-text-secondary">Desired hours per target</label>
@@ -180,6 +198,36 @@ export default function TargetDataVisualizer() {
             <option value="colorBlind">Color-blind friendly</option>
           </select>
         </div>
+
+        {/* Rejection filtering controls */}
+        {/* Debug rejection data */}
+        {rejectionData && (
+          <div className="flex flex-col">
+            <label className="text-xs text-text-secondary">Rejection filter</label>
+            <div className="flex flex-col gap-2">
+              <label className="flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  checked={applyRejectionFilter}
+                  onChange={(e) => setApplyRejectionFilter(e.target.checked)}
+                  className="w-4 h-4"
+                />
+                <span className="text-sm">Filter rejected frames</span>
+              </label>
+              <div className="text-xs text-blue-400">
+                Backend rejected count: {rejectionData.rejected_count}
+              </div>
+              <div className="text-xs text-text-secondary">
+                {rejectionStats.rejectedFrames} rejected of {rejectionStats.totalFrames} frames
+                {applyRejectionFilter && (
+                  <div className="text-green-400">
+                    Using {rejectionStats.acceptedFrames} accepted frames
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
 
       </div>
 
