@@ -304,6 +304,14 @@ export default function TargetDataVisualizer() {
 
           if (rows.length === 0) return null
 
+          // Calculate total hours for the target
+          const totalSecondsForTarget = Object.values(current).reduce((sum, sec) => sum + (sec || 0), 0)
+          const totalHoursForTarget = totalSecondsForTarget / 3600
+          const totalMinutes = Math.round(totalHoursForTarget * 60)
+          const hrs = Math.floor(totalMinutes / 60)
+          const mins = totalMinutes % 60
+          const totalTimeFormatted = `${hrs}:${String(mins).padStart(2, '0')}`
+
           // build debug info for displayed filters
           const debug = displayedKeys.map(k => {
             const weight = normGoal[k] || 0
@@ -317,7 +325,7 @@ export default function TargetDataVisualizer() {
           })
 
           return (
-            <ChartCard key={target} title={`${target}`}>
+            <ChartCard key={target} title={`${target} - Total time ${totalTimeFormatted} hours`}>
               {debugEnabled && (
                 <div className="mb-2 p-2 rounded bg-slate-900 border border-slate-800 text-xs">
                   <div className="font-semibold">Debug</div>

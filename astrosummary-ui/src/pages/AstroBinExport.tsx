@@ -44,11 +44,11 @@ export default function AstroBinExport() {
   }, [frames, filterMapText])
 
   const csv = useMemo(() => {
-    const cols = ['target', 'date', 'filter', 'number', 'duration']
+    const cols = ['date', 'filter', 'number', 'duration']
     const lines = [cols.join(',')]
     for (const [target, rows] of Object.entries(groupedByTarget)) {
       for (const r of rows) {
-        lines.push([target, r.date, r.filter, r.number, r.duration.toFixed(4)].join(','))
+        lines.push([r.date, r.filter, r.number, r.duration.toFixed(4)].join(','))
       }
     }
     return lines.join('\n')
@@ -101,9 +101,9 @@ export default function AstroBinExport() {
           <div className={Object.keys(groupedByTarget).length === 1 ? 'flex justify-center' : 'grid grid-cols-1 md:grid-cols-2 gap-6'}>
             {Object.entries(groupedByTarget).map(([target, rows]) => {
               const csvForTarget = (() => {
-                const cols = ['target', 'date', 'filter', 'number', 'duration']
+                const cols = ['date', 'filter', 'number', 'duration']
                 const lines = [cols.join(',')]
-                for (const r of rows) lines.push([target, r.date, r.filter, r.number, r.duration.toFixed(4)].join(','))
+                for (const r of rows) lines.push([r.date, r.filter, r.number, r.duration.toFixed(4)].join(','))
                 return lines.join('\n')
               })()
 
