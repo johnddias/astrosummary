@@ -152,25 +152,31 @@ If you get permission errors:
 
 ### Port Conflicts
 
-If ports 3001 or 8000 are already in use:
+If ports 3001 or 8000 are already in use, use `docker-compose.override.yml`:
 
-1. Edit `docker-compose.yml`
-2. Change the port mappings:
+1. Create or edit `docker-compose.override.yml`:
    ```yaml
-   backend:
-     ports:
-       - "8001:8000"  # Change 8000 to 8001
-   
-   frontend:
-     ports:
-       - "3002:80"  # Change 3001 to 3002
+   services:
+     backend:
+       ports:
+         - "8001:8000"  # Use port 8001 on host instead of 8000
+     
+     frontend:
+       ports:
+         - "3002:80"  # Use port 3002 on host instead of 3001
+       build:
+         args:
+           # Update API URL to match your backend port
+           - VITE_API_URL=http://your-nas-ip:8001
    ```
 
-3. Restart containers:
+2. Rebuild and restart containers:
    ```bash
    docker-compose down
-   docker-compose up -d
+   docker-compose up -d --build
    ```
+
+**Important:** If you change the backend port, you must also update `VITE_API_URL` in the frontend build args and rebuild, since the API URL is baked into the frontend at build time.
 
 ### Finding Your Shared Folder Paths
 

@@ -160,14 +160,28 @@ On Linux, you may need to adjust permissions for mounted directories. The backen
 
 ### Port conflicts
 
-If ports 3000 or 8000 are already in use, modify the port mappings in `docker-compose.yml`:
+If ports 3001 or 8000 are already in use, use `docker-compose.override.yml`:
 
-```yaml
-backend:
-  ports:
-    - "8001:8000"  # Change 8000 to 8001
+1. Create or edit `docker-compose.override.yml`:
+   ```yaml
+   services:
+     backend:
+       ports:
+         - "8001:8000"  # Use port 8001 on host instead of 8000
+     
+     frontend:
+       ports:
+         - "3002:80"  # Use port 3002 on host instead of 3001
+       build:
+         args:
+           # Update API URL to match your backend port
+           - VITE_API_URL=http://localhost:8001
+   ```
 
-frontend:
-  ports:
-    - "3001:80"  # Change 3000 to 3001
-```
+2. Rebuild the frontend (required when changing API URL):
+   ```bash
+   docker-compose down
+   docker-compose up -d --build
+   ```
+
+**Note:** The frontend API URL is set at build time, so if you change the backend port, you must rebuild the frontend with the new `VITE_API_URL`.
