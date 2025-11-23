@@ -1,0 +1,14 @@
+# Copy this file to docker-compose.override.yml and customize for your environment
+# docker-compose.override.yml is automatically used by docker-compose and is git-ignored
+
+services:
+  backend:
+    volumes:
+      # Override the default volume mount with your specific path
+      # Example for Synology:
+      - /volume1/DiasNAS/astrophotography:/data/astrophotography:ro
+      # Example for Windows:
+      # - R:/__astrophotography:/data/astrophotography:ro
+      # Example for Linux:
+      # - /mnt/storage/astrophotography:/data/astrophotography:ro
+

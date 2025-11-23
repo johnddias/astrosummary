@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import ChartCard from '../components/ChartCard'
+import { API_URL } from '../lib/apiConfig'
 
 function TotalsBar({totals}:{totals:Record<string, number>}){
   const entries = Object.entries(totals)
@@ -43,7 +44,7 @@ export default function NinaAnalyzer() {
     try {
       const fd = new FormData()
       fd.append('file', file)
-      const res = await fetch('http://127.0.0.1:8000/nina/analyze', { method: 'POST', body: fd })
+      const res = await fetch(`${API_URL}/nina/analyze`, { method: 'POST', body: fd })
       if (!res.ok) throw new Error(`Server returned ${res.status}`)
       const json = await res.json()
       setResult(json)

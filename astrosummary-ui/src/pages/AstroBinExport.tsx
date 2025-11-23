@@ -46,7 +46,7 @@ export default function AstroBinExport() {
   const csv = useMemo(() => {
     const cols = ['date', 'filter', 'number', 'duration']
     const lines = [cols.join(',')]
-    for (const [target, rows] of Object.entries(groupedByTarget)) {
+    for (const rows of Object.values(groupedByTarget)) {
       for (const r of rows) {
         lines.push([r.date, r.filter, r.number, r.duration.toFixed(4)].join(','))
       }

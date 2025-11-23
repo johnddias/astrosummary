@@ -1,4 +1,5 @@
 import type { LightFrame, RejectionData } from './types';
+import { API_URL } from '../lib/apiConfig';
 
 export type ScanProgress = { files_scanned: number; files_matched: number; total_files?: number }
 
@@ -8,7 +9,7 @@ export async function scanFrames({ backendPath, recurse }: { backendPath: string
 	let rejectionData: RejectionData | undefined = undefined
 	
 	try {
-		const res = await fetch('http://127.0.0.1:8000/scan_stream', {
+		const res = await fetch(`${API_URL}/scan_stream`, {
 			method: 'POST',
 			headers: { 'Content-Type': 'application/json' },
 			body: JSON.stringify({ path: backendPath, recurse, extensions: ['.fit', '.fits'] })
@@ -29,11 +30,6 @@ export async function scanFrames({ backendPath, recurse }: { backendPath: string
 				if (!line) continue
 				try {
 					const obj = JSON.parse(line)
-					// Debug logging
-					if (obj.type === 'done') {
-						if (obj.rejection_data) {
-						}
-					}
 					
 					if (obj.type === 'progress') {
 						onProgress?.({ files_scanned: obj.files_scanned, files_matched: obj.files_matched, total_files: obj.total_files })
@@ -56,7 +52,7 @@ export async function scanFrames({ backendPath, recurse }: { backendPath: string
 			}
 		}
 		return { frames, info: `Scanned ${frames.length} frames`, rejectionData }
-	} catch (err) {
+	} catch {
 		return { frames: [], info: 'Scan failed' }
 	}
 }
