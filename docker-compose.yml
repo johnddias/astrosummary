@@ -4,8 +4,8 @@ services:
       context: .
       dockerfile: backend/Dockerfile
     container_name: astrosummary-backend
-    ports:
-      - "8000:8000"
+    # Ports are configured in docker-compose.override.yml
+    # Default: "8000:8000" - override to change
     volumes:
       # Mount Synology shared folders for scanning
       # IMPORTANT: Use the container path (e.g., /data/astrophotography) in the UI, not the Synology path
@@ -39,8 +39,8 @@ services:
       args:
         - VITE_API_URL=http://localhost:8000
     container_name: astrosummary-frontend
-    ports:
-      - "3001:80"
+    # Ports are configured in docker-compose.override.yml
+    # Default: "3001:80" - override to change
     depends_on:
       - backend
     restart: unless-stopped
