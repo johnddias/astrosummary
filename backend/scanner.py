@@ -1,5 +1,5 @@
 from __future__ import annotations
-import os, re
+import os, re, sys
 from datetime import datetime
 from typing import Dict, Iterable, List, Tuple, Optional, Set
 from astropy.io import fits
