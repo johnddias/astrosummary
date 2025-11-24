@@ -331,6 +331,7 @@ def stream_scan_directory(path: str, recurse: bool, extensions: List[str]):
       { type: 'frame', frame: { ... } }
       { type: 'done', files_scanned: int, files_matched: int, rejection_data?: {...} }
     """
+    print(f"DEBUG stream_scan_directory: FUNCTION CALLED with path={path}", file=sys.stderr, flush=True)
     files_scanned = 0
     files_matched = 0
 

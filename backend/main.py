@@ -94,8 +94,15 @@ def scan_stream(req: ScanRequest):
     """Stream newline-delimited JSON events for long-running scans."""
     logger.info(f"scan_stream called: path={req.path}, recurse={req.recurse}, extensions={req.extensions}")
     print(f"DEBUG main: scan_stream called with path={req.path}", file=sys.stderr, flush=True)
-    gen = stream_scan_directory(req.path, req.recurse, req.extensions)
-    return StreamingResponse(gen, media_type='application/x-ndjson')
+    print(f"DEBUG main: About to call stream_scan_directory", file=sys.stderr, flush=True)
+    try:
+        gen = stream_scan_directory(req.path, req.recurse, req.extensions)
+        print(f"DEBUG main: Generator created, returning StreamingResponse", file=sys.stderr, flush=True)
+        return StreamingResponse(gen, media_type='application/x-ndjson')
+    except Exception as e:
+        logger.exception("Error in scan_stream")
+        print(f"DEBUG main: ERROR in scan_stream: {type(e).__name__}: {e}", file=sys.stderr, flush=True)
+        raise
 
 
 @app.post('/nina/analyze')
