@@ -8,6 +8,7 @@ import json
 from pathlib import Path
 import sys
 from fastapi import UploadFile, File, HTTPException
+import sys
 
 import logging
 
@@ -91,6 +92,8 @@ def scan(req: ScanRequest):
 @app.post('/scan_stream')
 def scan_stream(req: ScanRequest):
     """Stream newline-delimited JSON events for long-running scans."""
+    logger.info(f"scan_stream called: path={req.path}, recurse={req.recurse}, extensions={req.extensions}")
+    print(f"DEBUG main: scan_stream called with path={req.path}", file=sys.stderr, flush=True)
     gen = stream_scan_directory(req.path, req.recurse, req.extensions)
     return StreamingResponse(gen, media_type='application/x-ndjson')
 
