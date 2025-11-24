@@ -44,17 +44,38 @@ FILT_KEYS = ("FILTER", "FILTER1", "FILTER2")
 TYPE_KEYS = ("IMAGETYP", "IMAGETYP1", "FRAME")
 
 def _iter_paths(root: str, recurse: bool, exts: List[str]) -> Iterable[str]:
+    print(f"DEBUG _iter_paths: root={root}, recurse={recurse}, exts={exts}", file=sys.stderr, flush=True)
+    print(f"DEBUG _iter_paths: path exists: {os.path.exists(root)}, is_dir: {os.path.isdir(root)}", file=sys.stderr, flush=True)
     exts = {e.lower() for e in exts}
+    file_count = 0
     if recurse:
-        for dirpath, _, filenames in os.walk(root):
-            for fn in filenames:
-                if os.path.splitext(fn)[1].lower() in exts:
-                    yield os.path.join(dirpath, fn)
+        try:
+            for dirpath, _, filenames in os.walk(root):
+                print(f"DEBUG _iter_paths: walking {dirpath}, found {len(filenames)} files", file=sys.stderr, flush=True)
+                for fn in filenames:
+                    if os.path.splitext(fn)[1].lower() in exts:
+                        file_count += 1
+                        if file_count <= 3:
+                            print(f"DEBUG _iter_paths: yielding file {file_count}: {os.path.join(dirpath, fn)}", file=sys.stderr, flush=True)
+                        yield os.path.join(dirpath, fn)
+        except Exception as e:
+            print(f"DEBUG _iter_paths: ERROR in os.walk: {type(e).__name__}: {e}", file=sys.stderr, flush=True)
+            raise
     else:
-        for fn in os.listdir(root):
-            p = os.path.join(root, fn)
-            if os.path.isfile(p) and os.path.splitext(fn)[1].lower() in exts:
-                yield p
+        try:
+            files = os.listdir(root)
+            print(f"DEBUG _iter_paths: listdir found {len(files)} items", file=sys.stderr, flush=True)
+            for fn in files:
+                p = os.path.join(root, fn)
+                if os.path.isfile(p) and os.path.splitext(fn)[1].lower() in exts:
+                    file_count += 1
+                    if file_count <= 3:
+                        print(f"DEBUG _iter_paths: yielding file {file_count}: {p}", file=sys.stderr, flush=True)
+                    yield p
+        except Exception as e:
+            print(f"DEBUG _iter_paths: ERROR in listdir: {type(e).__name__}: {e}", file=sys.stderr, flush=True)
+            raise
+    print(f"DEBUG _iter_paths: total files found: {file_count}", file=sys.stderr, flush=True)
 
 def _get_first(hdr, keys: Tuple[str, ...], default=None):
     for k in keys:
