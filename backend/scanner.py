@@ -243,13 +243,14 @@ def scan_directory(path: str, recurse: bool, extensions: List[str]):
     rejection_data = _parse_rejection_logs(rejection_logs)
     rejected_filenames = set(rejection_data.get('rejected_frames', [])) if rejection_data else set()
     
-    # Debug logging
-    print(f"DEBUG scan_directory: Found {len(rejection_logs)} rejection logs")
+    # Debug logging - flush immediately
+    print(f"DEBUG scan_directory: Starting scan of path: {path}", file=sys.stderr, flush=True)
+    print(f"DEBUG scan_directory: Found {len(rejection_logs)} rejection logs", file=sys.stderr, flush=True)
     if rejection_data:
-        print(f"DEBUG scan_directory: Parsed {len(rejected_filenames)} rejected frames")
-        print(f"DEBUG scan_directory: Sample rejected files: {list(rejected_filenames)[:3]}")
+        print(f"DEBUG scan_directory: Parsed {len(rejected_filenames)} rejected frames", file=sys.stderr, flush=True)
+        print(f"DEBUG scan_directory: Sample rejected files: {list(rejected_filenames)[:3]}", file=sys.stderr, flush=True)
     else:
-        print("DEBUG scan_directory: No rejection data parsed")
+        print("DEBUG scan_directory: No rejection data parsed", file=sys.stderr, flush=True)
 
     for fpath in _iter_paths(path, recurse, extensions):
         files_scanned += 1
@@ -259,7 +260,7 @@ def scan_directory(path: str, recurse: bool, extensions: List[str]):
                 frame_type = _parse_type(hdr)
                 if frame_type != "LIGHT":
                     if files_scanned <= 5:  # Log first few skipped files for debugging
-                        print(f"DEBUG scan_directory: Skipping {Path(fpath).name} - frame_type={frame_type}, IMAGETYP={_get_first(hdr, TYPE_KEYS, 'NOT_FOUND')}")
+                        print(f"DEBUG scan_directory: Skipping {Path(fpath).name} - frame_type={frame_type}, IMAGETYP={_get_first(hdr, TYPE_KEYS, 'NOT_FOUND')}", file=sys.stderr, flush=True)
                     continue
                 
                 # Check if this frame is rejected
@@ -289,7 +290,7 @@ def scan_directory(path: str, recurse: bool, extensions: List[str]):
         except Exception as e:
             # Log errors for first few files to help debug
             if files_scanned <= 5:
-                print(f"DEBUG scan_directory: Error reading {Path(fpath).name}: {type(e).__name__}: {e}")
+                print(f"DEBUG scan_directory: Error reading {Path(fpath).name}: {type(e).__name__}: {e}", file=sys.stderr, flush=True)
             continue
 
     result = frames, files_scanned, files_matched
@@ -317,13 +318,14 @@ def stream_scan_directory(path: str, recurse: bool, extensions: List[str]):
     rejection_data = _parse_rejection_logs(rejection_logs)
     rejected_filenames = set(rejection_data.get('rejected_frames', [])) if rejection_data else set()
     
-    # Debug logging for stream scan
-    print(f"DEBUG stream_scan: Found {len(rejection_logs)} rejection logs")
+    # Debug logging for stream scan - flush immediately
+    print(f"DEBUG stream_scan: Starting scan of path: {path}", file=sys.stderr, flush=True)
+    print(f"DEBUG stream_scan: Found {len(rejection_logs)} rejection logs", file=sys.stderr, flush=True)
     if rejection_data:
-        print(f"DEBUG stream_scan: Parsed {len(rejected_filenames)} rejected frames")
-        print(f"DEBUG stream_scan: Sample rejected files: {list(rejected_filenames)[:3]}")
+        print(f"DEBUG stream_scan: Parsed {len(rejected_filenames)} rejected frames", file=sys.stderr, flush=True)
+        print(f"DEBUG stream_scan: Sample rejected files: {list(rejected_filenames)[:3]}", file=sys.stderr, flush=True)
     else:
-        print("DEBUG stream_scan: No rejection data parsed")
+        print("DEBUG stream_scan: No rejection data parsed", file=sys.stderr, flush=True)
 
     # materialize the file list so the frontend can show a total file count up front
     paths = list(_iter_paths(path, recurse, extensions))
@@ -342,7 +344,7 @@ def stream_scan_directory(path: str, recurse: bool, extensions: List[str]):
                 frame_type = _parse_type(hdr)
                 if frame_type != 'LIGHT':
                     if files_scanned <= 5:  # Log first few skipped files for debugging
-                        print(f"DEBUG stream_scan: Skipping {Path(fpath).name} - frame_type={frame_type}, IMAGETYP={_get_first(hdr, TYPE_KEYS, 'NOT_FOUND')}")
+                        print(f"DEBUG stream_scan: Skipping {Path(fpath).name} - frame_type={frame_type}, IMAGETYP={_get_first(hdr, TYPE_KEYS, 'NOT_FOUND')}", file=sys.stderr, flush=True)
                     continue
                 
                 # Check if this frame is rejected
@@ -373,7 +375,7 @@ def stream_scan_directory(path: str, recurse: bool, extensions: List[str]):
         except Exception as e:
             # Log errors for first few files to help debug
             if files_scanned <= 5:
-                print(f"DEBUG stream_scan: Error reading {Path(fpath).name}: {type(e).__name__}: {e}")
+                print(f"DEBUG stream_scan: Error reading {Path(fpath).name}: {type(e).__name__}: {e}", file=sys.stderr, flush=True)
             continue
 
     # final summary (include rejection_data if found)
