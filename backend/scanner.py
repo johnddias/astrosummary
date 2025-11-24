@@ -258,6 +258,8 @@ def scan_directory(path: str, recurse: bool, extensions: List[str]):
                 hdr = hdul[0].header if len(hdul) else {}
                 frame_type = _parse_type(hdr)
                 if frame_type != "LIGHT":
+                    if files_scanned <= 5:  # Log first few skipped files for debugging
+                        print(f"DEBUG scan_directory: Skipping {Path(fpath).name} - frame_type={frame_type}, IMAGETYP={_get_first(hdr, TYPE_KEYS, 'NOT_FOUND')}")
                     continue
                 
                 # Check if this frame is rejected
@@ -284,8 +286,10 @@ def scan_directory(path: str, recurse: bool, extensions: List[str]):
                     frame_data["rejected"] = is_rejected
                 
                 frames.append(frame_data)
-        except Exception:
-            # Skip unreadable/corrupt files silently for MVP
+        except Exception as e:
+            # Log errors for first few files to help debug
+            if files_scanned <= 5:
+                print(f"DEBUG scan_directory: Error reading {Path(fpath).name}: {type(e).__name__}: {e}")
             continue
 
     result = frames, files_scanned, files_matched
@@ -337,6 +341,8 @@ def stream_scan_directory(path: str, recurse: bool, extensions: List[str]):
                 hdr = hdul[0].header if len(hdul) else {}
                 frame_type = _parse_type(hdr)
                 if frame_type != 'LIGHT':
+                    if files_scanned <= 5:  # Log first few skipped files for debugging
+                        print(f"DEBUG stream_scan: Skipping {Path(fpath).name} - frame_type={frame_type}, IMAGETYP={_get_first(hdr, TYPE_KEYS, 'NOT_FOUND')}")
                     continue
                 
                 # Check if this frame is rejected
@@ -364,8 +370,10 @@ def stream_scan_directory(path: str, recurse: bool, extensions: List[str]):
                 
                 # include current counters and total_files so frontend can update progress together with the frame
                 yield json.dumps({ 'type': 'frame', 'frame': frame, 'files_scanned': files_scanned, 'files_matched': files_matched, 'total_files': total_files }) + '\n'
-        except Exception:
-            # skip silently
+        except Exception as e:
+            # Log errors for first few files to help debug
+            if files_scanned <= 5:
+                print(f"DEBUG stream_scan: Error reading {Path(fpath).name}: {type(e).__name__}: {e}")
             continue
 
     # final summary (include rejection_data if found)
