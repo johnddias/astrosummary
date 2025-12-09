@@ -29,10 +29,18 @@ export default function Sidebar() {
   <div className="mt-4 space-y-3">
 
         <div className="space-y-1">
-          <label className="text-sm text-text-secondary">Path to .fits files</label>
+          <label className="text-sm text-text-secondary flex items-center gap-1">
+            Path to .fits files
+            <span
+              className="cursor-help text-blue-400 hover:text-blue-300"
+              title="Docker users: Use Linux container paths with forward slashes.&#10;Example: /data/astrophotography/Deep Sky/Target Name&#10;&#10;The path should match your container mount point, NOT your Windows path.&#10;Spaces in paths are OK - no escaping needed."
+            >
+              ⓘ
+            </span>
+          </label>
           <input
             className="w-full px-3 py-2 rounded-xl bg-slate-800 border border-slate-700"
-            placeholder={navigator.platform.startsWith('Win') ? 'Y:\\\\M101' : '/data/M101'}
+            placeholder={navigator.platform.startsWith('Win') ? '/data/astrophotography/Target Name' : '/data/astrophotography/Target Name'}
             value={backendPath}
             onChange={(e) => setBackendPath(e.target.value)}
           />

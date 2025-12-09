@@ -7,13 +7,29 @@ export type ScanProgress = { files_scanned: number; files_matched: number; total
 export async function scanFrames({ backendPath, recurse }: { backendPath: string; recurse: boolean }, onProgress?: (p: ScanProgress) => void, onFrame?: (f: LightFrame) => void): Promise<{ frames: LightFrame[]; info?: any; rejectionData?: RejectionData }> {
 	const frames: LightFrame[] = []
 	let rejectionData: RejectionData | undefined = undefined
-	
+
 	try {
-		const res = await fetch(`${API_URL}/scan_stream`, {
+		const scanUrl = `${API_URL}/scan_stream`;
+		const requestBody = { path: backendPath, recurse, extensions: ['.fit', '.fits'] };
+
+		console.log('=== Scan Request Debug ===');
+		console.log('API_URL:', API_URL);
+		console.log('Full scan URL:', scanUrl);
+		console.log('Request body:', requestBody);
+		console.log('========================');
+
+		const res = await fetch(scanUrl, {
 			method: 'POST',
 			headers: { 'Content-Type': 'application/json' },
-			body: JSON.stringify({ path: backendPath, recurse, extensions: ['.fit', '.fits'] })
+			body: JSON.stringify(requestBody)
 		})
+
+		console.log('=== Scan Response Debug ===');
+		console.log('Response status:', res.status);
+		console.log('Response ok:', res.ok);
+		console.log('Response headers:', Object.fromEntries(res.headers.entries()));
+		console.log('==========================');
+
 		if (!res.ok || !res.body) throw new Error('Scan failed')
 
 		const reader = res.body.getReader()
@@ -52,7 +68,11 @@ export async function scanFrames({ backendPath, recurse }: { backendPath: string
 			}
 		}
 		return { frames, info: `Scanned ${frames.length} frames`, rejectionData }
-	} catch {
+	} catch (error) {
+		console.error('=== Scan Error Debug ===');
+		console.error('Error details:', error);
+		console.error('Error message:', error instanceof Error ? error.message : String(error));
+		console.error('=======================');
 		return { frames: [], info: 'Scan failed' }
 	}
 }
