@@ -185,20 +185,20 @@ def apply_rejection_filter(scan_data: dict, rejection_data: dict):
         rejected_filenames = set(rejection_data.get('rejected_frames', []))
         if not rejected_filenames:
             return scan_data  # No rejections to apply
-        
+
         # Create a copy of scan data to modify
         filtered_data = scan_data.copy()
-        
+
         # Filter frames array
         if 'frames' in filtered_data:
             original_count = len(filtered_data['frames'])
             filtered_frames = []
-            
+
             for frame in filtered_data['frames']:
                 filename = Path(frame.get('file_path', '')).name
                 if filename not in rejected_filenames:
                     filtered_frames.append(frame)
-            
+
             filtered_data['frames'] = filtered_frames
             filtered_data['rejection_info'] = {
                 'original_frame_count': original_count,
@@ -207,12 +207,111 @@ def apply_rejection_filter(scan_data: dict, rejection_data: dict):
                 'rejection_log': rejection_data.get('log_path', 'uploaded'),
                 'applied': True
             }
-        
+
         return filtered_data
-        
+
     except Exception as e:
         logger.exception("rejection filter apply error")
         raise HTTPException(status_code=500, detail=f'Rejection filter error: {e}')
+
+
+@app.post('/rejection/export_csv')
+def export_rejected_frames_csv(request_data: dict):
+    """Export rejected frames as CSV with target and filename columns."""
+    from fastapi.responses import Response
+    import csv
+    import io
+
+    def _is_frame_rejected(filename: str, rejected_filenames: set) -> bool:
+        """
+        Check if a frame is rejected, handling filename transformations.
+        Same logic as scanner._is_frame_rejected()
+        """
+        if not rejected_filenames:
+            return False
+
+        # Direct match first
+        if filename in rejected_filenames:
+            return True
+
+        # Try matching without extension
+        name_without_ext = Path(filename).stem
+        for rejected_name in rejected_filenames:
+            rejected_stem = Path(rejected_name).stem
+            if name_without_ext == rejected_stem:
+                return True
+
+        # Try matching with common calibration suffix patterns removed
+        base_name = name_without_ext
+        # Remove common suffixes that might be added during calibration
+        calibration_suffixes = ['_c_lps', '_c', '_lps', '_cc', '_cal', '_calibrated']
+        for suffix in calibration_suffixes:
+            if base_name.endswith(suffix):
+                base_name = base_name[:-len(suffix)]
+                break
+
+        # Check if any rejected file matches this base name
+        for rejected_name in rejected_filenames:
+            rejected_stem = Path(rejected_name).stem
+            # Remove calibration suffixes from rejected names too
+            rejected_base = rejected_stem
+            for suffix in calibration_suffixes:
+                if rejected_base.endswith(suffix):
+                    rejected_base = rejected_base[:-len(suffix)]
+                    break
+
+            if base_name == rejected_base:
+                return True
+
+        return False
+
+    try:
+        frames_data = request_data.get('frames', [])
+        rejection_data = request_data.get('rejection_data', {})
+
+        rejected_filenames = set(rejection_data.get('rejected_frames', []))
+        if not rejected_filenames:
+            raise HTTPException(status_code=400, detail='No rejected frames found in rejection data')
+
+        # Find matching frames using the same logic as the scanner
+        rejected_frames_data = []
+        for frame in frames_data:
+            file_path = frame.get('file_path', '')
+            if not file_path:
+                continue
+
+            filename = Path(file_path).name
+
+            if _is_frame_rejected(filename, rejected_filenames):
+                rejected_frames_data.append({
+                    'target': frame.get('target') or 'Unknown',
+                    'filename': filename
+                })
+
+        if not rejected_frames_data:
+            raise HTTPException(status_code=400, detail='No matching rejected frames found in the scanned frames')
+
+        # Generate CSV
+        output = io.StringIO()
+        writer = csv.DictWriter(output, fieldnames=['target', 'filename'])
+        writer.writeheader()
+        writer.writerows(rejected_frames_data)
+
+        csv_content = output.getvalue()
+
+        return Response(
+            content=csv_content,
+            media_type='text/csv',
+            headers={
+                'Content-Disposition': 'attachment; filename="rejected_frames.csv"'
+            }
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.exception("CSV export error")
+        raise HTTPException(status_code=500, detail=f'CSV export error: {e}')
 
 
 if __name__ == "__main__":

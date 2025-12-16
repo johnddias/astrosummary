@@ -123,6 +123,44 @@ export default function TargetDataVisualizer() {
 
   // Remove all debug logs and temporary debug UI
 
+  const handleExportRejectedFrames = async () => {
+    if (!rejectionData || rejectionStats.rejectedFrames === 0) {
+      alert('No rejected frames to export')
+      return
+    }
+
+    try {
+      const API_URL = import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000'
+      const response = await fetch(`${API_URL}/rejection/export_csv`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          frames: frames,
+          rejection_data: rejectionData
+        })
+      })
+
+      if (!response.ok) {
+        const errorText = await response.text()
+        throw new Error(`Export failed: ${errorText}`)
+      }
+
+      // Download the CSV file
+      const blob = await response.blob()
+      const url = window.URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = 'rejected_frames.csv'
+      document.body.appendChild(a)
+      a.click()
+      window.URL.revokeObjectURL(url)
+      document.body.removeChild(a)
+    } catch (error) {
+      console.error('CSV export error:', error)
+      alert(`Failed to export CSV: ${error}`)
+    }
+  }
+
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-start gap-3">
@@ -225,6 +263,14 @@ export default function TargetDataVisualizer() {
                   </div>
                 )}
               </div>
+              {rejectionStats.rejectedFrames > 0 && (
+                <button
+                  onClick={handleExportRejectedFrames}
+                  className="mt-2 px-3 py-1 text-xs bg-blue-600 hover:bg-blue-700 text-white rounded"
+                >
+                  Export Rejected Frames (CSV)
+                </button>
+              )}
             </div>
           </div>
         )}
