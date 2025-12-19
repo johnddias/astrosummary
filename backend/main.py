@@ -250,6 +250,10 @@ def export_rejected_frames_csv(request_data: dict):
                 base_name = base_name[:-len(suffix)]
                 break
 
+        # Also strip version numbers like _1, _2, _1_1, _1_2, etc. using regex
+        import re
+        base_name = re.sub(r'(_\d+)+$', '', base_name)
+
         # Check if any rejected file matches this base name
         for rejected_name in rejected_filenames:
             rejected_stem = Path(rejected_name).stem
@@ -259,6 +263,9 @@ def export_rejected_frames_csv(request_data: dict):
                 if rejected_base.endswith(suffix):
                     rejected_base = rejected_base[:-len(suffix)]
                     break
+
+            # Strip version numbers from rejected names too
+            rejected_base = re.sub(r'(_\d+)+$', '', rejected_base)
 
             if base_name == rejected_base:
                 return True
