@@ -162,7 +162,6 @@ def _is_frame_rejected(filename: str, rejected_filenames: Set[str]) -> bool:
 
     # Direct match first
     if filename in rejected_filenames:
-        logger.debug(f"Frame {filename} rejected via direct match")
         return True
 
     # Try matching without extension
@@ -170,7 +169,6 @@ def _is_frame_rejected(filename: str, rejected_filenames: Set[str]) -> bool:
     for rejected_name in rejected_filenames:
         rejected_stem = Path(rejected_name).stem
         if name_without_ext == rejected_stem:
-            logger.debug(f"Frame {filename} rejected via stem match with {rejected_name}")
             return True
 
     # Try matching with common calibration suffix patterns removed
@@ -200,7 +198,6 @@ def _is_frame_rejected(filename: str, rejected_filenames: Set[str]) -> bool:
         rejected_base = re.sub(r'(_\d+)+$', '', rejected_base)
 
         if base_name == rejected_base:
-            logger.debug(f"Frame {filename} (base: {base_name}) rejected via suffix match with {rejected_name} (base: {rejected_base})")
             return True
 
     return False
@@ -226,8 +223,6 @@ def _parse_rejection_logs(log_paths: List[str]) -> Optional[Dict]:
                 continue  # Skip problematic logs
 
         if all_rejected_frames:
-            logger.info(f"Parsed rejection logs: found {len(all_rejected_frames)} rejected frames")
-            logger.info(f"Rejected filenames: {sorted(list(all_rejected_frames))[:10]}...")  # Show first 10
             return {
                 'rejected_frames': list(all_rejected_frames),
                 'quality_data': all_quality_data,
@@ -243,21 +238,11 @@ def scan_directory(path: str, recurse: bool, extensions: List[str]):
     frames: List[Dict] = []
     files_scanned = 0
     files_matched = 0
-    rejected_count = 0
 
     # Look for rejection logs
     rejection_logs = _find_rejection_logs(path, recurse)
     rejection_data = _parse_rejection_logs(rejection_logs)
     rejected_filenames = set(rejection_data.get('rejected_frames', [])) if rejection_data else set()
-
-    # Debug logging - flush immediately
-    print(f"DEBUG scan_directory: Starting scan of path: {path}", file=sys.stderr, flush=True)
-    print(f"DEBUG scan_directory: Found {len(rejection_logs)} rejection logs", file=sys.stderr, flush=True)
-    if rejection_data:
-        print(f"DEBUG scan_directory: Parsed {len(rejected_filenames)} rejected frames", file=sys.stderr, flush=True)
-        print(f"DEBUG scan_directory: Sample rejected files: {list(rejected_filenames)[:3]}", file=sys.stderr, flush=True)
-    else:
-        print("DEBUG scan_directory: No rejection data parsed", file=sys.stderr, flush=True)
 
     for fpath in _iter_paths(path, recurse, extensions):
         files_scanned += 1
@@ -266,16 +251,11 @@ def scan_directory(path: str, recurse: bool, extensions: List[str]):
                 hdr = hdul[0].header if len(hdul) else {}
                 frame_type = _parse_type(hdr)
                 if frame_type != "LIGHT":
-                    if files_scanned <= 5:  # Log first few skipped files for debugging
-                        print(f"DEBUG scan_directory: Skipping {Path(fpath).name} - frame_type={frame_type}, IMAGETYP={_get_first(hdr, TYPE_KEYS, 'NOT_FOUND')}", file=sys.stderr, flush=True)
                     continue
 
                 # Check if this frame is rejected
                 filename = Path(fpath).name
                 is_rejected = _is_frame_rejected(filename, rejected_filenames)
-
-                if is_rejected:
-                    rejected_count += 1
 
                 files_matched += 1
                 target = _parse_target(hdr, fpath)
@@ -297,13 +277,8 @@ def scan_directory(path: str, recurse: bool, extensions: List[str]):
                     frame_data["rejected"] = is_rejected
 
                 frames.append(frame_data)
-        except Exception as e:
-            # Log errors for first few files to help debug
-            if files_scanned <= 5:
-                print(f"DEBUG scan_directory: Error reading {Path(fpath).name}: {type(e).__name__}: {e}", file=sys.stderr, flush=True)
+        except Exception:
             continue
-
-    logger.info(f"Scan complete: {files_matched} light frames found, {rejected_count} marked as rejected (out of {len(rejected_filenames)} in rejection log)")
 
     result = frames, files_scanned, files_matched
 
@@ -322,24 +297,13 @@ def stream_scan_directory(path: str, recurse: bool, extensions: List[str]):
       { type: 'frame', frame: { ... } }
       { type: 'done', files_scanned: int, files_matched: int, rejection_data?: {...} }
     """
-    print(f"DEBUG stream_scan_directory: FUNCTION CALLED with path={path}", file=sys.stderr, flush=True)
     files_scanned = 0
     files_matched = 0
-    rejected_count = 0
 
     # Look for rejection logs
     rejection_logs = _find_rejection_logs(path, recurse)
     rejection_data = _parse_rejection_logs(rejection_logs)
     rejected_filenames = set(rejection_data.get('rejected_frames', [])) if rejection_data else set()
-
-    # Debug logging for stream scan - flush immediately
-    print(f"DEBUG stream_scan: Starting scan of path: {path}", file=sys.stderr, flush=True)
-    print(f"DEBUG stream_scan: Found {len(rejection_logs)} rejection logs", file=sys.stderr, flush=True)
-    if rejection_data:
-        print(f"DEBUG stream_scan: Parsed {len(rejected_filenames)} rejected frames", file=sys.stderr, flush=True)
-        print(f"DEBUG stream_scan: Rejected filenames: {sorted(list(rejected_filenames))}", file=sys.stderr, flush=True)
-    else:
-        print("DEBUG stream_scan: No rejection data parsed", file=sys.stderr, flush=True)
 
     # materialize the file list so the frontend can show a total file count up front
     paths = list(_iter_paths(path, recurse, extensions))
@@ -357,17 +321,11 @@ def stream_scan_directory(path: str, recurse: bool, extensions: List[str]):
                 hdr = hdul[0].header if len(hdul) else {}
                 frame_type = _parse_type(hdr)
                 if frame_type != 'LIGHT':
-                    if files_scanned <= 5:  # Log first few skipped files for debugging
-                        print(f"DEBUG stream_scan: Skipping {Path(fpath).name} - frame_type={frame_type}, IMAGETYP={_get_first(hdr, TYPE_KEYS, 'NOT_FOUND')}", file=sys.stderr, flush=True)
                     continue
 
                 # Check if this frame is rejected
                 filename = Path(fpath).name
                 is_rejected = _is_frame_rejected(filename, rejected_filenames)
-
-                if is_rejected:
-                    rejected_count += 1
-                    print(f"DEBUG stream_scan: Frame {filename} marked as REJECTED", file=sys.stderr, flush=True)
 
                 files_matched += 1
                 target = _parse_target(hdr, fpath)
@@ -390,24 +348,12 @@ def stream_scan_directory(path: str, recurse: bool, extensions: List[str]):
 
                 # include current counters and total_files so frontend can update progress together with the frame
                 yield json.dumps({ 'type': 'frame', 'frame': frame, 'files_scanned': files_scanned, 'files_matched': files_matched, 'total_files': total_files }) + '\n'
-        except Exception as e:
-            # Log errors for first few files to help debug
-            if files_scanned <= 5:
-                print(f"DEBUG stream_scan: Error reading {Path(fpath).name}: {type(e).__name__}: {e}", file=sys.stderr, flush=True)
+        except Exception:
             continue
-
-    logger.info(f"Stream scan complete: {files_matched} light frames found, {rejected_count} marked as rejected (out of {len(rejected_filenames)} in rejection log)")
-    print(f"DEBUG stream_scan: COMPLETE - {rejected_count} frames marked rejected out of {len(rejected_filenames)} in rejection log", file=sys.stderr, flush=True)
 
     # final summary (include rejection_data if found)
     done_event = { 'type': 'done', 'total_files': total_files, 'files_scanned': files_scanned, 'files_matched': files_matched }
     if rejection_data:
         done_event['rejection_data'] = rejection_data
-
-    # Debug logging for done event
-    print(f"DEBUG stream_scan done: rejection_data present: {rejection_data is not None}")
-    if rejection_data:
-        print(f"DEBUG stream_scan done: rejection_data keys: {list(rejection_data.keys())}")
-    print(f"DEBUG stream_scan done: done_event keys: {list(done_event.keys())}")
 
     yield json.dumps(done_event) + '\n'
