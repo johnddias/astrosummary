@@ -35,6 +35,7 @@ export default function NinaAnalyzer() {
   const [loading, setLoading] = useState(false)
   const [result, setResult] = useState<any | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [selectedFilters, setSelectedFilters] = useState<Set<string>>(new Set())
 
   async function submit() {
     if (!file) return
@@ -48,12 +49,37 @@ export default function NinaAnalyzer() {
       if (!res.ok) throw new Error(`Server returned ${res.status}`)
       const json = await res.json()
       setResult(json)
+      setSelectedFilters(new Set()) // Reset filters when new results load
     } catch (e: any) {
       setError(String(e))
     } finally {
       setLoading(false)
     }
   }
+
+  function toggleFilter(label: string) {
+    setSelectedFilters(prev => {
+      const next = new Set(prev)
+      if (next.has(label)) {
+        next.delete(label)
+      } else {
+        next.add(label)
+      }
+      return next
+    })
+  }
+
+  function clearFilters() {
+    setSelectedFilters(new Set())
+  }
+
+  // Get unique event labels from segments
+  const eventLabels = result ? Array.from(new Set<string>(result.segments.map((s: any) => s.label))).sort() : []
+
+  // Filter segments based on selected filters
+  const filteredSegments = result?.segments.filter((s: any) =>
+    selectedFilters.size === 0 || selectedFilters.has(s.label)
+  ) || []
 
   return (
     <div className="space-y-4">
@@ -87,14 +113,45 @@ export default function NinaAnalyzer() {
               </div>
 
               <div className="mt-4">
-                <div className="font-semibold">Segments (first 50)</div>
+                <div className="flex items-center justify-between mb-2">
+                  <div className="font-semibold">Filter Events</div>
+                  {selectedFilters.size > 0 && (
+                    <button
+                      onClick={clearFilters}
+                      className="text-xs px-2 py-1 rounded bg-gray-200 hover:bg-gray-300"
+                    >
+                      Clear ({selectedFilters.size})
+                    </button>
+                  )}
+                </div>
+                <div className="flex flex-wrap gap-2 mb-3">
+                  {eventLabels.map((label: string) => (
+                    <label key={label} className="flex items-center gap-1 text-xs cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={selectedFilters.has(label)}
+                        onChange={() => toggleFilter(label)}
+                        className="cursor-pointer"
+                      />
+                      <span>{label}</span>
+                    </label>
+                  ))}
+                </div>
+              </div>
+
+              <div className="mt-4">
+                <div className="font-semibold">
+                  Segments
+                  {selectedFilters.size > 0 && ` (filtered: ${filteredSegments.length} of ${result.segments.length})`}
+                  {selectedFilters.size === 0 && ` (showing first 50 of ${result.segments.length})`}
+                </div>
                 <div className="mt-2 overflow-auto max-h-64">
                   <table className="min-w-full text-sm">
                     <thead className="text-left text-xs text-gray-500">
                       <tr><th>start</th><th>end</th><th>label</th><th>dur(h:mm)</th><th>meta</th></tr>
                     </thead>
                     <tbody>
-                      {result.segments.slice(0,50).map((s:any, idx:number)=> (
+                      {(selectedFilters.size > 0 ? filteredSegments : result.segments.slice(0,50)).map((s:any, idx:number)=> (
                         <tr key={idx} className="border-t">
                           <td className="align-top pr-4">{s.start}</td>
                           <td className="align-top pr-4">{s.end}</td>
