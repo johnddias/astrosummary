@@ -91,7 +91,7 @@ export default function NinaAnalyzer() {
                 <div className="mt-2 overflow-auto max-h-64">
                   <table className="min-w-full text-sm">
                     <thead className="text-left text-xs text-gray-500">
-                      <tr><th>start</th><th>end</th><th>label</th><th>dur(s)</th><th>meta</th></tr>
+                      <tr><th>start</th><th>end</th><th>label</th><th>dur(h:mm)</th><th>meta</th></tr>
                     </thead>
                     <tbody>
                       {result.segments.slice(0,50).map((s:any, idx:number)=> (

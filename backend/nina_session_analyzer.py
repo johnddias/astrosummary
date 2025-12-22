@@ -32,12 +32,8 @@ def _parse_iso_ts(s: str) -> datetime:
 PAT = {
     "start_autofocus": re.compile(r'\bStarting Category:\s*Focuser,\s*Item:\s*RunAutofocus\b'),
     "done_autofocus": re.compile(r'\bAutoFocus completed\b'),
-    "start_slew": re.compile(r'TelescopeVM\.cs\|SlewToCoordinatesAsync'),
-    "solve_begin": re.compile(r'ImageSolver\.cs\|Solve\|41\|Platesolving'),
+    "center_start": re.compile(r'\bStarting Category:\s*Telescope,\s*Item:\s*Center\b'),
     "center_finish": re.compile(r'\bFinishing Category:\s*Telescope,\s*Item:\s*Center\b'),
-    "sync": re.compile(r'\bTelescopeVM\.cs\|Sync\b'),
-    "phd_settle_begin": re.compile(r'\bStarting Category:\s*Phd2 Tools,\s*Item:\s*Phd2SettleInstruction\b'),
-    "phd_settle_end": re.compile(r'\bFinishing Category:\s*Phd2 Tools,\s*Item:\s*Phd2SettleInstruction\b'),
     "wait_time_begin": re.compile(r'\bStarting Category:\s*Utility,\s*Item:\s*WaitForTime\b'),
     "wait_alt_begin": re.compile(r'\bStarting Category:\s*Utility,\s*Item:\s*WaitForAltitude\b'),
     "wait_safe_begin": re.compile(r'\bStarting Category:\s*Safety Monitor,\s*Item:\s*WaitUntilSafe\b'),
@@ -144,26 +140,8 @@ def parse_nina_log(
             focus_start = None
             continue
 
-        if PAT["start_slew"].search(msg):
-            if not slew_block_start:
-                slew_block_start = ts
-            continue
-        if PAT["solve_begin"].search(msg):
-            if not slew_block_start:
-                slew_block_start = ts
-            continue
-        if PAT["sync"].search(msg):
-            if not slew_block_start:
-                slew_block_start = ts
-            continue
-        if PAT["phd_settle_begin"].search(msg):
-            if not slew_block_start:
-                slew_block_start = ts
-            continue
-        if PAT["phd_settle_end"].search(msg):
-            if slew_block_start:
-                _accumulate(segments, slew_block_start, ts, "slew_solve_center")
-                slew_block_start = None
+        if PAT["center_start"].search(msg):
+            slew_block_start = ts
             continue
         if PAT["center_finish"].search(msg):
             if slew_block_start:
