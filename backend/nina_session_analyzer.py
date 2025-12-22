@@ -38,6 +38,8 @@ PAT = {
     "wait_alt_begin": re.compile(r'\bStarting Category:\s*Utility,\s*Item:\s*WaitForAltitude\b'),
     "wait_safe_begin": re.compile(r'\bStarting Category:\s*Safety Monitor,\s*Item:\s*WaitUntilSafe\b'),
     "wait_generic_end": re.compile(r'\bFinishing Category:\s*(Utility|Safety Monitor),'),
+    "roof_closing": re.compile(r'\bRoof closing\b'),
+    "roof_opening": re.compile(r'\bRoof opening\b'),
     "capture_begin": re.compile(r'\bStarting Exposure - Exposure Time:\s*(?P<exp>[0-9]+(?:\.[0-9]+)?)s\b'),
     # Accept a few common variants for meridian flip messages seen in NINA logs
     # Only treat explicit initialization/DoMeridianFlip/Starting messages as flip starts.
@@ -130,6 +132,7 @@ def parse_nina_log(
     slew_block_start: Optional[datetime] = None
     wait_start: Optional[Tuple[datetime, str]] = None
     flip_start: Optional[datetime] = None
+    roof_closed_start: Optional[datetime] = None
 
     for i, (ts, msg) in enumerate(events):
         if PAT["start_autofocus"].search(msg):
@@ -147,6 +150,15 @@ def parse_nina_log(
             if slew_block_start:
                 _accumulate(segments, slew_block_start, ts, "slew_solve_center")
                 slew_block_start = None
+            continue
+
+        if PAT["roof_closing"].search(msg):
+            roof_closed_start = ts
+            continue
+        if PAT["roof_opening"].search(msg):
+            if roof_closed_start:
+                _accumulate(segments, roof_closed_start, ts, "idle", reason="WaitingForRoof")
+                roof_closed_start = None
             continue
 
         if PAT["wait_time_begin"].search(msg):
@@ -211,6 +223,8 @@ def parse_nina_log(
         _accumulate(segments, wait_start[0], last_ts, "idle", reason=wait_start[1])
     if flip_start:
         _accumulate(segments, flip_start, last_ts, "meridian_flip")
+    if roof_closed_start:
+        _accumulate(segments, roof_closed_start, last_ts, "idle", reason="WaitingForRoof")
 
     segments = _merge_adjacent(segments, join_window_s=join_window_s)
 
