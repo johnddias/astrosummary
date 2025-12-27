@@ -33,3 +33,41 @@ class ScanResponse(BaseModel):
 class BackendSettings(BaseModel):
     path: str = ''
     recurse: bool = True
+
+
+class QualityMetrics(BaseModel):
+    """Quality metrics for a single sub-frame"""
+    snr: float
+    fwhm: float
+    eccentricity: float
+    star_count: int
+    background_median: float
+    background_std: float
+    gradient_strength: float
+    quality_score: float
+    phd2_rms: Optional[float] = None  # Optional guiding RMS
+
+
+class ValidationResult(BaseModel):
+    """Result of validating a frame against PixInsight rejection"""
+    file_path: str
+    filename: str
+    target: str
+    filter: str
+    date: str
+    rejected_by_wbpp: bool
+    metrics: QualityMetrics
+    validation_status: str  # "CORRECT_REJECT", "CORRECT_ACCEPT", "FALSE_POSITIVE", "FALSE_NEGATIVE"
+
+
+class ValidationRequest(BaseModel):
+    """Request to validate PixInsight rejections"""
+    frames: List[LightFrame]
+    rejection_data: RejectionData
+    phd2_log_path: Optional[str] = None
+
+
+class ValidationResponse(BaseModel):
+    """Response from validation analysis"""
+    results: List[ValidationResult]
+    summary: Dict[str, Any]  # Statistics about validation

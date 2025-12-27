@@ -1,14 +1,16 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
-from models import ScanRequest, ScanResponse, LightFrame
+from models import (ScanRequest, ScanResponse, LightFrame, BackendSettings,
+                    ValidationRequest, ValidationResponse, ValidationResult, QualityMetrics)
 from scanner import scan_directory, stream_scan_directory
-from fastapi.responses import StreamingResponse
-from models import BackendSettings
+from fastapi.responses import StreamingResponse, Response
 import json
 from pathlib import Path
 import sys
 from fastapi import UploadFile, File, HTTPException
-import sys
+import csv
+import io
+from datetime import datetime
 
 import logging
 
@@ -59,6 +61,13 @@ def save_settings(s: BackendSettings):
 
 app = FastAPI(title="AstroSummary Backend")
 
+@app.on_event("startup")
+async def startup_event():
+    logger.info("=" * 60)
+    logger.info("AstroSummary Backend starting up")
+    logger.info("Validation endpoint available at /analyze/validate_rejections")
+    logger.info("=" * 60)
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],  # tighten later
@@ -66,6 +75,22 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Middleware to log requests before Pydantic validation
+@app.middleware("http")
+async def log_requests(request, call_next):
+    # Use print with flush to bypass logging buffering
+    print(f"!!! MIDDLEWARE: {request.method} {request.url.path}", flush=True)
+
+    if request.url.path == "/analyze/validate_rejections":
+        print(f"=== VALIDATION: Content-Length={request.headers.get('content-length', 'unknown')} ===", flush=True)
+
+    response = await call_next(request)
+
+    if request.url.path == "/analyze/validate_rejections":
+        print(f"=== DONE: status={response.status_code} ===", flush=True)
+
+    return response
 
 @app.post("/scan", response_model=ScanResponse)
 def scan(req: ScanRequest):
@@ -318,6 +343,407 @@ def export_rejected_frames_csv(request_data: dict):
         raise
     except Exception as e:
         logger.exception("CSV export error")
+        raise HTTPException(status_code=500, detail=f'CSV export error: {e}')
+
+
+@app.post('/analyze/test_validation_request')
+async def test_validation_request(request: ValidationRequest):
+    """
+    Test endpoint to verify request parsing works without doing analysis.
+    This helps isolate whether the issue is in Pydantic validation or analysis.
+    """
+    logger.info("=== TEST VALIDATION REQUEST ENDPOINT CALLED ===")
+    logger.info(f"Received request with {len(request.frames)} frames")
+    logger.info(f"Rejection data has {len(request.rejection_data.rejected_frames)} rejected frames")
+    logger.info(f"PHD2 log path: {request.phd2_log_path}")
+
+    return {
+        "success": True,
+        "frames_count": len(request.frames),
+        "rejected_count": len(request.rejection_data.rejected_frames),
+        "message": "Request parsed successfully"
+    }
+
+
+@app.post('/analyze/validate_rejections')
+async def validate_rejections(request: Request):
+    """
+    Validate PixInsight WBPP rejections against objective quality metrics.
+
+    Analyzes each frame for quality and compares against WBPP rejection status
+    to identify false positives (good frames incorrectly rejected) and false
+    negatives (bad frames that weren't rejected).
+
+    NOTE: Uses raw Request to bypass slow Pydantic validation for large payloads
+    """
+    print("=== ENDPOINT: validate_rejections called ===", flush=True)
+
+    # Parse JSON manually (fast)
+    print("Parsing JSON body...", flush=True)
+    body = await request.json()
+    frames = body.get('frames', [])
+    rejection_data = body.get('rejection_data', {})
+    phd2_log_path = body.get('phd2_log_path')
+
+    print(f"Received {len(frames)} frames", flush=True)
+
+    try:
+        print("Importing quality_analyzer...", flush=True)
+        from quality_analyzer import SubframeAnalyzer
+        print("quality_analyzer imported", flush=True)
+
+        print("Importing phd2_log_parser...", flush=True)
+        from phd2_log_parser import PHD2LogParser
+        print("phd2_log_parser imported", flush=True)
+
+        print("Importing scanner...", flush=True)
+        from scanner import _is_frame_rejected
+        print("All imports done", flush=True)
+
+        print("Creating SubframeAnalyzer...", flush=True)
+        analyzer = SubframeAnalyzer()
+        print("Analyzer ready", flush=True)
+
+        results = []
+
+        # Parse PHD2 log(s) if provided
+        guiding_data = {}
+        if phd2_log_path:
+            try:
+                parser = PHD2LogParser()
+                log_path = Path(phd2_log_path)
+
+                # Check if it's a directory or a file
+                if log_path.is_dir():
+                    guiding_data = parser.parse_log_directory(phd2_log_path)
+                    print(f"Loaded {len(guiding_data)} PHD2 samples from directory", flush=True)
+                else:
+                    guiding_data = parser.parse_log(phd2_log_path)
+                    print(f"Loaded {len(guiding_data)} PHD2 samples from file", flush=True)
+            except Exception as e:
+                print(f"PHD2 log error: {e}", flush=True)
+
+        # Build set of rejected filenames for fast lookup
+        rejected_filenames = set(rejection_data.get('rejected_frames', []))
+
+        print(f"Starting analysis of {len(frames)} frames...", flush=True)
+
+        for idx, frame in enumerate(frames):
+            try:
+                # Log every 10th frame
+                if idx % 10 == 0:
+                    print(f"Progress: [{idx+1}/{len(frames)}]", flush=True)
+
+                # Analyze frame quality
+                metrics_obj = analyzer.analyze_frame(frame['file_path'])
+
+                # Check if frame was rejected by WBPP
+                filename = Path(frame['file_path']).name
+                was_rejected = _is_frame_rejected(filename, rejected_filenames)
+
+                # Correlate with PHD2 guiding if available
+                if guiding_data and frame.get('date'):
+                    try:
+                        import re
+                        frame_date_str = frame['date']
+                        frame_time = None
+
+                        # Try to extract time from filename pattern: _YYYY-MM-DD_HH-MM-SS_
+                        time_match = re.search(r'_(\d{2})-(\d{2})-(\d{2})_', filename)
+                        if time_match and len(frame_date_str) == 10:
+                            # Found time in filename like _20-39-48_
+                            h, m, s = time_match.groups()
+                            frame_time = datetime.strptime(f"{frame_date_str} {h}:{m}:{s}", '%Y-%m-%d %H:%M:%S')
+                        elif 'T' in frame_date_str:
+                            # Full ISO format
+                            frame_time = datetime.fromisoformat(frame_date_str.replace('Z', '+00:00'))
+
+                        if frame_time:
+                            parser = PHD2LogParser()
+                            phd2_rms = parser.correlate_frame_to_guiding(
+                                frame_time, frame.get('exposure_s', 0), guiding_data
+                            )
+                            if phd2_rms is not None:
+                                metrics_obj.phd2_rms = phd2_rms
+                    except Exception as e:
+                        pass  # Silent fail for PHD2 correlation
+
+                # Convert to Pydantic model
+                metrics = QualityMetrics(
+                    snr=metrics_obj.snr,
+                    fwhm=metrics_obj.fwhm,
+                    eccentricity=metrics_obj.eccentricity,
+                    star_count=metrics_obj.star_count,
+                    background_median=metrics_obj.background_median,
+                    background_std=metrics_obj.background_std,
+                    gradient_strength=metrics_obj.gradient_strength,
+                    quality_score=metrics_obj.quality_score,
+                    phd2_rms=getattr(metrics_obj, 'phd2_rms', None)
+                )
+
+                # Determine validation status
+                # Threshold: quality_score >= 0.5 is "good"
+                is_good_quality = metrics.quality_score >= 0.5
+
+                if was_rejected and is_good_quality:
+                    status = "FALSE_POSITIVE"  # Good frame incorrectly rejected
+                elif was_rejected and not is_good_quality:
+                    status = "CORRECT_REJECT"  # Bad frame correctly rejected
+                elif not was_rejected and is_good_quality:
+                    status = "CORRECT_ACCEPT"  # Good frame correctly accepted
+                else:
+                    status = "FALSE_NEGATIVE"  # Bad frame incorrectly accepted
+
+                result = ValidationResult(
+                    file_path=frame['file_path'],
+                    filename=filename,
+                    target=frame.get('target', 'Unknown'),
+                    filter=frame.get('filter', 'Unknown'),
+                    date=frame.get('date', ''),
+                    rejected_by_wbpp=was_rejected,
+                    metrics=metrics,
+                    validation_status=status
+                )
+
+                results.append(result)
+
+            except Exception as e:
+                logger.error(f"Error analyzing {frame.get('file_path', 'unknown')}: {e}")
+                continue
+
+        # Compute summary statistics
+        total = len(results)
+        correct_rejects = sum(1 for r in results if r.validation_status == "CORRECT_REJECT")
+        correct_accepts = sum(1 for r in results if r.validation_status == "CORRECT_ACCEPT")
+        false_positives = sum(1 for r in results if r.validation_status == "FALSE_POSITIVE")
+        false_negatives = sum(1 for r in results if r.validation_status == "FALSE_NEGATIVE")
+
+        accuracy = (correct_rejects + correct_accepts) / total if total > 0 else 0.0
+
+        summary = {
+            'total_frames': total,
+            'correct_rejects': correct_rejects,
+            'correct_accepts': correct_accepts,
+            'false_positives': false_positives,
+            'false_negatives': false_negatives,
+            'accuracy': accuracy,
+            'wbpp_reject_rate': sum(1 for r in results if r.rejected_by_wbpp) / total if total > 0 else 0.0,
+            'mean_quality_rejected': sum(r.metrics.quality_score for r in results if r.rejected_by_wbpp) / max(1, sum(1 for r in results if r.rejected_by_wbpp)),
+            'mean_quality_accepted': sum(r.metrics.quality_score for r in results if not r.rejected_by_wbpp) / max(1, sum(1 for r in results if not r.rejected_by_wbpp))
+        }
+
+        logger.info(f"=== VALIDATION COMPLETE ===")
+        logger.info(f"Analyzed {total} frames: {correct_rejects} correct rejects, {correct_accepts} correct accepts")
+        logger.info(f"False positives: {false_positives}, False negatives: {false_negatives}")
+        logger.info(f"Accuracy: {accuracy:.1%}")
+
+        response = ValidationResponse(results=results, summary=summary)
+        logger.info(f"Returning response to client...")
+
+        return response
+
+    except Exception as e:
+        logger.exception("Validation analysis error")
+        raise HTTPException(status_code=500, detail=f'Validation error: {e}')
+
+
+@app.post('/analyze/validate_rejections_stream')
+async def validate_rejections_stream(request: Request):
+    """
+    SSE streaming version of validation endpoint.
+    Streams progress updates and final results in real-time.
+    """
+    # Parse JSON BEFORE creating generator - request body must be read now
+    body = await request.json()
+    frames = body.get('frames', [])
+    rejection_data = body.get('rejection_data', {})
+    phd2_log_path = body.get('phd2_log_path')
+    total_frames = len(frames)
+
+    async def generate():
+        try:
+
+            # Send initial progress
+            yield f"data: {json.dumps({'type': 'progress', 'current': 0, 'total': total_frames, 'status': 'Initializing...'})}\n\n"
+
+            # Import modules
+            from quality_analyzer import SubframeAnalyzer
+            from phd2_log_parser import PHD2LogParser
+            from scanner import _is_frame_rejected
+
+            analyzer = SubframeAnalyzer()
+
+            # Parse PHD2 logs if provided
+            guiding_data = {}
+            if phd2_log_path:
+                yield f"data: {json.dumps({'type': 'progress', 'current': 0, 'total': total_frames, 'status': 'Loading PHD2 logs...'})}\n\n"
+                try:
+                    parser = PHD2LogParser()
+                    log_path = Path(phd2_log_path)
+                    if log_path.is_dir():
+                        guiding_data = parser.parse_log_directory(phd2_log_path)
+                    else:
+                        guiding_data = parser.parse_log(phd2_log_path)
+                except Exception:
+                    pass
+
+            rejected_filenames = set(rejection_data.get('rejected_frames', []))
+            results = []
+
+            yield f"data: {json.dumps({'type': 'progress', 'current': 0, 'total': total_frames, 'status': 'Analyzing frames...'})}\n\n"
+
+            for idx, frame in enumerate(frames):
+                try:
+                    # Send progress update every frame
+                    yield f"data: {json.dumps({'type': 'progress', 'current': idx + 1, 'total': total_frames, 'status': f'Analyzing frame {idx + 1} of {total_frames}'})}\n\n"
+
+                    # Analyze frame
+                    metrics_obj = analyzer.analyze_frame(frame['file_path'])
+                    filename = Path(frame['file_path']).name
+                    was_rejected = _is_frame_rejected(filename, rejected_filenames)
+
+                    # PHD2 correlation
+                    if guiding_data and frame.get('date'):
+                        try:
+                            import re
+                            frame_date_str = frame['date']
+                            frame_time = None
+
+                            time_match = re.search(r'_(\d{2})-(\d{2})-(\d{2})_', filename)
+                            if time_match and len(frame_date_str) == 10:
+                                h, m, s = time_match.groups()
+                                frame_time = datetime.strptime(f"{frame_date_str} {h}:{m}:{s}", '%Y-%m-%d %H:%M:%S')
+                            elif 'T' in frame_date_str:
+                                frame_time = datetime.fromisoformat(frame_date_str.replace('Z', '+00:00'))
+
+                            if frame_time:
+                                parser = PHD2LogParser()
+                                phd2_rms = parser.correlate_frame_to_guiding(
+                                    frame_time, frame.get('exposure_s', 0), guiding_data
+                                )
+                                if phd2_rms is not None:
+                                    metrics_obj.phd2_rms = phd2_rms
+                        except Exception:
+                            pass
+
+                    # Build result
+                    metrics = QualityMetrics(
+                        snr=metrics_obj.snr,
+                        fwhm=metrics_obj.fwhm,
+                        eccentricity=metrics_obj.eccentricity,
+                        star_count=metrics_obj.star_count,
+                        background_median=metrics_obj.background_median,
+                        background_std=metrics_obj.background_std,
+                        gradient_strength=metrics_obj.gradient_strength,
+                        quality_score=metrics_obj.quality_score,
+                        phd2_rms=getattr(metrics_obj, 'phd2_rms', None)
+                    )
+
+                    is_good_quality = metrics.quality_score >= 0.5
+                    if was_rejected and is_good_quality:
+                        status = "FALSE_POSITIVE"
+                    elif was_rejected and not is_good_quality:
+                        status = "CORRECT_REJECT"
+                    elif not was_rejected and is_good_quality:
+                        status = "CORRECT_ACCEPT"
+                    else:
+                        status = "FALSE_NEGATIVE"
+
+                    result = ValidationResult(
+                        file_path=frame['file_path'],
+                        filename=filename,
+                        target=frame.get('target', 'Unknown'),
+                        filter=frame.get('filter', 'Unknown'),
+                        date=frame.get('date', ''),
+                        rejected_by_wbpp=was_rejected,
+                        metrics=metrics,
+                        validation_status=status
+                    )
+                    results.append(result)
+
+                except Exception as e:
+                    continue
+
+            # Compute summary
+            total = len(results)
+            correct_rejects = sum(1 for r in results if r.validation_status == "CORRECT_REJECT")
+            correct_accepts = sum(1 for r in results if r.validation_status == "CORRECT_ACCEPT")
+            false_positives = sum(1 for r in results if r.validation_status == "FALSE_POSITIVE")
+            false_negatives = sum(1 for r in results if r.validation_status == "FALSE_NEGATIVE")
+            accuracy = (correct_rejects + correct_accepts) / total if total > 0 else 0.0
+
+            summary = {
+                'total_frames': total,
+                'correct_rejects': correct_rejects,
+                'correct_accepts': correct_accepts,
+                'false_positives': false_positives,
+                'false_negatives': false_negatives,
+                'accuracy': accuracy,
+                'wbpp_reject_rate': sum(1 for r in results if r.rejected_by_wbpp) / total if total > 0 else 0.0,
+                'mean_quality_rejected': sum(r.metrics.quality_score for r in results if r.rejected_by_wbpp) / max(1, sum(1 for r in results if r.rejected_by_wbpp)),
+                'mean_quality_accepted': sum(r.metrics.quality_score for r in results if not r.rejected_by_wbpp) / max(1, sum(1 for r in results if not r.rejected_by_wbpp))
+            }
+
+            # Send final complete message with results
+            response = ValidationResponse(results=results, summary=summary)
+            yield f"data: {json.dumps({'type': 'complete', 'data': response.model_dump()})}\n\n"
+
+        except Exception as e:
+            yield f"data: {json.dumps({'type': 'error', 'message': str(e)})}\n\n"
+
+    return StreamingResponse(
+        generate(),
+        media_type='text/event-stream',
+        headers={
+            'Cache-Control': 'no-cache',
+            'Connection': 'keep-alive',
+            'X-Accel-Buffering': 'no'
+        }
+    )
+
+
+@app.post('/analyze/export_validation_csv')
+def export_validation_csv(request: ValidationResponse):
+    """Export validation results to CSV"""
+    try:
+        output = io.StringIO()
+        fieldnames = [
+            'filename', 'target', 'filter', 'date', 'rejected_by_wbpp',
+            'quality_score', 'snr', 'fwhm', 'eccentricity', 'star_count',
+            'gradient', 'phd2_rms', 'validation_status'
+        ]
+        writer = csv.DictWriter(output, fieldnames=fieldnames)
+        writer.writeheader()
+
+        for result in request.results:
+            writer.writerow({
+                'filename': result.filename,
+                'target': result.target,
+                'filter': result.filter,
+                'date': result.date,
+                'rejected_by_wbpp': result.rejected_by_wbpp,
+                'quality_score': f"{result.metrics.quality_score:.3f}",
+                'snr': f"{result.metrics.snr:.2f}",
+                'fwhm': f"{result.metrics.fwhm:.2f}",
+                'eccentricity': f"{result.metrics.eccentricity:.3f}",
+                'star_count': result.metrics.star_count,
+                'gradient': f"{result.metrics.gradient_strength:.3f}",
+                'phd2_rms': f"{result.metrics.phd2_rms:.2f}" if result.metrics.phd2_rms else '',
+                'validation_status': result.validation_status
+            })
+
+        csv_content = output.getvalue()
+
+        return Response(
+            content=csv_content,
+            media_type='text/csv',
+            headers={
+                'Content-Disposition': 'attachment; filename="rejection_validation.csv"'
+            }
+        )
+
+    except Exception as e:
+        logger.exception("Validation CSV export error")
         raise HTTPException(status_code=500, detail=f'CSV export error: {e}')
 
 

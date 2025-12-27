@@ -6,9 +6,11 @@ import ChartCard from '../components/ChartCard'
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Legend } from 'recharts'
 import { normalizeFilter } from '../library/filters'
 import TargetFilterReport from './TargetFilterReport'
+import RejectionValidation from './RejectionValidation'
 
 export default function TargetDataVisualizer() {
   const { frames, desiredHours, setDesiredHours, debugEnabled, scanning, rejectionData, applyRejectionFilter, setApplyRejectionFilter } = useApp()
+  const [showValidationDashboard, setShowValidationDashboard] = useState(false)
   // per-filter ratio inputs (defaults to 1.0) - initialized from localStorage when possible
   const [haRatio, setHaRatio] = useState<number>(() => {
     try { const v = parseFloat(localStorage.getItem('ratio.ha') ?? ''); return isNaN(v) ? 1.0 : Math.round(v*10)/10 } catch { return 1.0 }
@@ -264,12 +266,20 @@ export default function TargetDataVisualizer() {
                 )}
               </div>
               {rejectionStats.rejectedFrames > 0 && (
-                <button
-                  onClick={handleExportRejectedFrames}
-                  className="mt-2 px-3 py-1 text-xs bg-blue-600 hover:bg-blue-700 text-white rounded"
-                >
-                  Export Rejected Frames (CSV)
-                </button>
+                <>
+                  <button
+                    onClick={handleExportRejectedFrames}
+                    className="mt-2 px-3 py-1 text-xs bg-blue-600 hover:bg-blue-700 text-white rounded"
+                  >
+                    Export Rejected Frames (CSV)
+                  </button>
+                  <button
+                    onClick={() => setShowValidationDashboard(!showValidationDashboard)}
+                    className="mt-2 px-3 py-1 text-xs bg-purple-600 hover:bg-purple-700 text-white rounded"
+                  >
+                    {showValidationDashboard ? 'Hide' : 'Show'} Validation Dashboard
+                  </button>
+                </>
               )}
             </div>
           </div>
@@ -278,6 +288,11 @@ export default function TargetDataVisualizer() {
       </div>
 
   {/* Scanning moved to Sidebar; status is available in AppContext if needed */}
+
+      {/* Rejection Validation Dashboard */}
+      {showValidationDashboard && rejectionData && (
+        <RejectionValidation frames={frames} rejectionData={rejectionData} />
+      )}
 
       {targets.length === 0 && (
         <div className="text-text-secondary">No LIGHT frames yet — run Scan from the sidebar.</div>
