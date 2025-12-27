@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 import { ScatterChart, Scatter, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, Cell } from 'recharts'
 import type { ValidationResponse, ValidationResult, LightFrame, RejectionData } from '../lib/types'
 import { API_URL } from '../lib/apiConfig'

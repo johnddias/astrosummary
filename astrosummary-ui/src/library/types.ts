@@ -35,4 +35,4 @@ export type AstroBinRow = {
 };
 
 // Type for mode selection
-export type Mode = 'Ratio Planner' | 'AstroBin Export' | 'Target Data Visualizer' | 'NINA Analyzer';
+export type Mode = 'Ratio Planner' | 'AstroBin Export' | 'Target Data Visualizer' | 'NINA Analyzer' | 'Rejection Validation';

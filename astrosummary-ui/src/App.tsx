@@ -3,9 +3,10 @@ import { useApp } from './context/AppContext'
 import AstroBinExport from './pages/AstroBinExport'
 import TargetDataVisualizer from './pages/TargetDataVisualizer'
 import NinaAnalyzer from './pages/NinaAnalyzer'
+import RejectionValidation from './pages/RejectionValidation'
 
 export default function App() {
-  const { mode } = useApp()
+  const { mode, frames, rejectionData } = useApp()
   return (
     <div className="flex bg-bg-app text-text-primary min-h-screen">
       <Sidebar />
@@ -13,6 +14,7 @@ export default function App() {
   {mode === 'AstroBin Export' && <AstroBinExport />}
   {mode === 'Target Data Visualizer' && <TargetDataVisualizer />}
   {mode === 'NINA Analyzer' && <NinaAnalyzer />}
+  {mode === 'Rejection Validation' && <RejectionValidation frames={frames} rejectionData={rejectionData ?? null} />}
   {/* Target Filter Report moved into Target Data Visualizer view */}
       </main>
     </div>
