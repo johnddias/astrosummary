@@ -35,6 +35,7 @@ export default function RejectionValidation({ frames, rejectionData }: Rejection
   const [progress, setProgress] = useState<{ current: number; total: number; status?: string } | null>(null)
   const [filterTypeFilter, setFilterTypeFilter] = useState<string>('all')
   const [dateFilter, setDateFilter] = useState<string>('all')
+  const [selectedStatusFilters, setSelectedStatusFilters] = useState<Set<string>>(new Set())
 
   // Check if we have the required data
   const canValidate = frames.length > 0 && rejectionData !== null
@@ -154,6 +155,22 @@ export default function RejectionValidation({ frames, rejectionData }: Rejection
     }
   }
 
+  const toggleStatusFilter = (status: string) => {
+    setSelectedStatusFilters(prev => {
+      const next = new Set(prev)
+      if (next.has(status)) {
+        next.delete(status)
+      } else {
+        next.add(status)
+      }
+      return next
+    })
+  }
+
+  const clearStatusFilters = () => {
+    setSelectedStatusFilters(new Set())
+  }
+
   const getSortedResults = (): ValidationResult[] => {
     if (!validationResults) return []
 
@@ -166,6 +183,10 @@ export default function RejectionValidation({ frames, rejectionData }: Rejection
 
     if (dateFilter !== 'all') {
       filtered = filtered.filter(r => r.date === dateFilter)
+    }
+
+    if (selectedStatusFilters.size > 0) {
+      filtered = filtered.filter(r => selectedStatusFilters.has(r.validation_status))
     }
 
     // Sort
@@ -195,13 +216,17 @@ export default function RejectionValidation({ frames, rejectionData }: Rejection
     })
   }
 
-  // Get unique filters and dates for filter dropdowns
+  // Get unique filters, dates, and statuses for filter dropdowns
   const uniqueFilters = validationResults
     ? Array.from(new Set(validationResults.results.map(r => r.filter))).sort()
     : []
 
   const uniqueDates = validationResults
     ? Array.from(new Set(validationResults.results.map(r => r.date))).sort()
+    : []
+
+  const uniqueStatuses = validationResults
+    ? Array.from(new Set(validationResults.results.map(r => r.validation_status))).sort()
     : []
 
   // Prepare scatter plot data
@@ -435,7 +460,7 @@ export default function RejectionValidation({ frames, rejectionData }: Rejection
             <h3 className="text-xl font-bold text-white mb-4">Detailed Results</h3>
 
             {/* Filters */}
-            <div className="flex gap-4 mb-4">
+            <div className="flex flex-wrap gap-4 mb-4">
               <div className="flex items-center gap-2">
                 <label className="text-sm text-gray-300">Filter:</label>
                 <select
@@ -469,6 +494,40 @@ export default function RejectionValidation({ frames, rejectionData }: Rejection
               <div className="text-sm text-gray-400">
                 Showing {getSortedResults().length} of {validationResults.results.length} frames
               </div>
+            </div>
+
+            {/* Status Filter */}
+            <div className="flex items-center gap-3 mb-4">
+              <label className="text-sm text-gray-300">Status:</label>
+              <div className="flex flex-wrap gap-3">
+                {uniqueStatuses.map(status => (
+                  <label key={status} className="flex items-center gap-1 text-xs cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={selectedStatusFilters.has(status)}
+                      onChange={() => toggleStatusFilter(status)}
+                      className="cursor-pointer"
+                    />
+                    <span
+                      className="px-2 py-0.5 rounded"
+                      style={{
+                        backgroundColor: STATUS_COLORS[status] + '33',
+                        color: STATUS_COLORS[status]
+                      }}
+                    >
+                      {status.replace('_', ' ')}
+                    </span>
+                  </label>
+                ))}
+              </div>
+              {selectedStatusFilters.size > 0 && (
+                <button
+                  onClick={clearStatusFilters}
+                  className="text-xs px-2 py-1 rounded bg-gray-700 hover:bg-gray-600 text-gray-300"
+                >
+                  Clear ({selectedStatusFilters.size})
+                </button>
+              )}
             </div>
 
             <div className="overflow-x-auto">

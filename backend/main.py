@@ -552,7 +552,11 @@ async def validate_rejections_stream(request: Request):
     """
     SSE streaming version of validation endpoint.
     Streams progress updates and final results in real-time.
+    Uses multi-threading for parallel frame analysis.
     """
+    import concurrent.futures
+    import os
+
     # Parse JSON BEFORE creating generator - request body must be read now
     body = await request.json()
     frames = body.get('frames', [])
@@ -560,20 +564,21 @@ async def validate_rejections_stream(request: Request):
     phd2_log_path = body.get('phd2_log_path')
     total_frames = len(frames)
 
+    # Determine number of worker threads (use CPU count, max 8 to avoid overwhelming I/O)
+    num_workers = min(os.cpu_count() or 4, 8)
+
     async def generate():
         try:
 
             # Send initial progress
-            yield f"data: {json.dumps({'type': 'progress', 'current': 0, 'total': total_frames, 'status': 'Initializing...'})}\n\n"
+            yield f"data: {json.dumps({'type': 'progress', 'current': 0, 'total': total_frames, 'status': f'Initializing ({num_workers} threads)...'})}\n\n"
 
             # Import modules
             from quality_analyzer import SubframeAnalyzer
             from phd2_log_parser import PHD2LogParser
             from scanner import _is_frame_rejected
 
-            analyzer = SubframeAnalyzer()
-
-            # Parse PHD2 logs if provided
+            # Parse PHD2 logs if provided (do this once before parallelizing)
             guiding_data = {}
             if phd2_log_path:
                 yield f"data: {json.dumps({'type': 'progress', 'current': 0, 'total': total_frames, 'status': 'Loading PHD2 logs...'})}\n\n"
@@ -588,14 +593,12 @@ async def validate_rejections_stream(request: Request):
                     pass
 
             rejected_filenames = set(rejection_data.get('rejected_frames', []))
-            results = []
 
-            yield f"data: {json.dumps({'type': 'progress', 'current': 0, 'total': total_frames, 'status': 'Analyzing frames...'})}\n\n"
-
-            for idx, frame in enumerate(frames):
+            def process_frame(frame):
+                """Worker function to process a single frame"""
                 try:
-                    # Send progress update every frame
-                    yield f"data: {json.dumps({'type': 'progress', 'current': idx + 1, 'total': total_frames, 'status': f'Analyzing frame {idx + 1} of {total_frames}'})}\n\n"
+                    # Each thread gets its own analyzer instance
+                    analyzer = SubframeAnalyzer()
 
                     # Analyze frame
                     metrics_obj = analyzer.analyze_frame(frame['file_path'])
@@ -617,8 +620,8 @@ async def validate_rejections_stream(request: Request):
                                 frame_time = datetime.fromisoformat(frame_date_str.replace('Z', '+00:00'))
 
                             if frame_time:
-                                parser = PHD2LogParser()
-                                phd2_rms = parser.correlate_frame_to_guiding(
+                                phd2_parser = PHD2LogParser()
+                                phd2_rms = phd2_parser.correlate_frame_to_guiding(
                                     frame_time, frame.get('exposure_s', 0), guiding_data
                                 )
                                 if phd2_rms is not None:
@@ -649,7 +652,7 @@ async def validate_rejections_stream(request: Request):
                     else:
                         status = "FALSE_NEGATIVE"
 
-                    result = ValidationResult(
+                    return ValidationResult(
                         file_path=frame['file_path'],
                         filename=filename,
                         target=frame.get('target', 'Unknown'),
@@ -659,10 +662,30 @@ async def validate_rejections_stream(request: Request):
                         metrics=metrics,
                         validation_status=status
                     )
-                    results.append(result)
 
                 except Exception as e:
-                    continue
+                    return None
+
+            results = []
+            completed = 0
+
+            yield f"data: {json.dumps({'type': 'progress', 'current': 0, 'total': total_frames, 'status': f'Analyzing frames ({num_workers} threads)...'})}\n\n"
+
+            # Process frames in parallel using ThreadPoolExecutor
+            with concurrent.futures.ThreadPoolExecutor(max_workers=num_workers) as executor:
+                # Submit all frames for processing
+                future_to_frame = {executor.submit(process_frame, frame): frame for frame in frames}
+
+                # Collect results as they complete
+                for future in concurrent.futures.as_completed(future_to_frame):
+                    completed += 1
+                    result = future.result()
+                    if result is not None:
+                        results.append(result)
+
+                    # Send progress update every 5 frames or on last frame to reduce SSE overhead
+                    if completed % 5 == 0 or completed == total_frames:
+                        yield f"data: {json.dumps({'type': 'progress', 'current': completed, 'total': total_frames, 'status': f'Analyzed {completed} of {total_frames} frames'})}\n\n"
 
             # Compute summary
             total = len(results)
