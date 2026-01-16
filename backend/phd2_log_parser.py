@@ -5,7 +5,6 @@ Parses PHD2 guiding logs to extract RMS tracking performance
 for correlation with sub-frame quality.
 """
 
-import csv
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
@@ -75,6 +74,10 @@ class PHD2LogParser:
         PHD2 log format (CSV):
         Frame,Time,mount,dx,dy,RARawDistance,DECRawDistance,RAGuideDistance,DECGuideDistance,...
 
+        Note: PHD2 logs can contain multiple "Guiding Begins" sessions (after dithering,
+        settling, target changes, etc.). Each session resets the elapsed time counter.
+        This parser handles multiple sessions by tracking each "Guiding Begins" timestamp.
+
         Args:
             log_path: Path to PHD2 guide log file
 
@@ -92,78 +95,99 @@ class PHD2LogParser:
             import re
 
             with open(log_file, 'r', encoding='utf-8') as f:
-                # PHD2 logs have header lines before the CSV data
-                # Extract start datetime from "Guiding Begins at" line
-                header_line = None
-                guiding_start_time = None
+                lines = f.readlines()
 
-                for line in f:
-                    # Look for "Guiding Begins at 2025-12-25 16:14:10"
-                    if guiding_start_time is None and 'Guiding Begins at' in line:
-                        dt_match = re.search(r'(\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2})', line)
-                        if dt_match:
-                            try:
-                                guiding_start_time = datetime.strptime(dt_match.group(1), '%Y-%m-%d %H:%M:%S')
-                            except ValueError:
-                                pass
+            # Find the CSV header line
+            header_line = None
+            header_idx = None
+            for idx, line in enumerate(lines):
+                if line.startswith('Frame,'):
+                    header_line = line.strip()
+                    header_idx = idx
+                    break
 
-                    if line.startswith('Frame,'):
-                        header_line = line
-                        break
+            if not header_line:
+                logger.warning(f"No CSV header found in {log_path}")
+                return {}
 
-                if not header_line:
-                    logger.warning(f"No CSV header found in {log_path}")
-                    return {}
+            # Parse the header to get column indices
+            header_cols = header_line.split(',')
+            try:
+                time_col = header_cols.index('Time')
+                ra_col = header_cols.index('RARawDistance')
+                dec_col = header_cols.index('DECRawDistance')
+            except ValueError as e:
+                logger.warning(f"Missing required column in {log_path}: {e}")
+                return {}
 
-                if guiding_start_time is None:
-                    logger.warning(f"Could not find guiding start time in {log_path}")
-                    return {}
+            # Process lines after header, tracking "Guiding Begins" sessions
+            current_session_start = None
+            session_count = 0
 
-                # Parse remaining lines as CSV using the header we found
-                import io
-                remaining_content = header_line + f.read()
-                reader = csv.DictReader(io.StringIO(remaining_content))
+            for line in lines[header_idx + 1:]:
+                line = line.strip()
+                if not line:
+                    continue
 
-                for row in reader:
-                    try:
-                        # Parse timestamp - PHD2 Time column is just time, not datetime
-                        time_str = row.get('Time') or ''
-                        time_str = time_str.strip()
-
-                        if not time_str:
-                            continue
-
-                        # Time column is elapsed seconds since guiding started
-                        # Skip non-numeric values like "Settling started"
+                # Check for new guiding session
+                if 'Guiding Begins at' in line:
+                    dt_match = re.search(r'(\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2})', line)
+                    if dt_match:
                         try:
-                            elapsed_seconds = float(time_str)
+                            current_session_start = datetime.strptime(dt_match.group(1), '%Y-%m-%d %H:%M:%S')
+                            session_count += 1
                         except ValueError:
-                            continue
+                            pass
+                    continue
 
-                        # Calculate actual timestamp
-                        timestamp = guiding_start_time + timedelta(seconds=elapsed_seconds)
+                # Skip if we don't have a session start yet
+                if current_session_start is None:
+                    continue
 
-                        # Extract RA and DEC distances (in pixels or arcsec depending on log)
-                        ra_raw = float(row.get('RARawDistance', 0) or 0)
-                        dec_raw = float(row.get('DECRawDistance', 0) or 0)
+                # Skip non-data lines (INFO messages, etc.)
+                if not line[0].isdigit():
+                    continue
 
-                        # Compute total RMS
-                        rms_total = (ra_raw**2 + dec_raw**2)**0.5
-
-                        metrics = GuidingMetrics(
-                            timestamp=timestamp,
-                            rms_total=rms_total,
-                            rms_ra=abs(ra_raw),
-                            rms_dec=abs(dec_raw)
-                        )
-
-                        guiding_data[timestamp] = metrics
-
-                    except (ValueError, KeyError) as e:
-                        # Skip malformed rows
+                # Parse CSV data line
+                try:
+                    cols = line.split(',')
+                    if len(cols) <= max(time_col, ra_col, dec_col):
                         continue
 
-            logger.info(f"Parsed {len(guiding_data)} guiding samples from {log_path}")
+                    time_str = cols[time_col].strip()
+                    if not time_str:
+                        continue
+
+                    # Time column is elapsed seconds since guiding started
+                    try:
+                        elapsed_seconds = float(time_str)
+                    except ValueError:
+                        continue
+
+                    # Calculate actual timestamp from current session start
+                    timestamp = current_session_start + timedelta(seconds=elapsed_seconds)
+
+                    # Extract RA and DEC distances
+                    ra_raw = float(cols[ra_col] or 0)
+                    dec_raw = float(cols[dec_col] or 0)
+
+                    # Compute total RMS
+                    rms_total = (ra_raw**2 + dec_raw**2)**0.5
+
+                    metrics = GuidingMetrics(
+                        timestamp=timestamp,
+                        rms_total=rms_total,
+                        rms_ra=abs(ra_raw),
+                        rms_dec=abs(dec_raw)
+                    )
+
+                    guiding_data[timestamp] = metrics
+
+                except (ValueError, IndexError) as e:
+                    # Skip malformed rows
+                    continue
+
+            logger.info(f"Parsed {len(guiding_data)} guiding samples from {session_count} sessions in {log_path}")
             return guiding_data
 
         except Exception as e:
