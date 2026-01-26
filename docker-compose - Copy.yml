@@ -1,0 +1,47 @@
+services:
+  backend:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    container_name: astrosummary-backend
+    # Ports are configured in docker-compose.override.yml
+    # Default: "8000:8000" - override to change
+    volumes:
+      # Mount Synology shared folders for scanning
+      # IMPORTANT: Use the container path (e.g., /data/astrophotography) in the UI, not the Synology path
+      # 
+      # Synology typically uses /volume1/... for shared folders
+      # Format: Synology-path:container-path:ro (read-only)
+      # 
+      # Example: Mount /volume1/astrophotography to /data/astrophotography in container
+      # NOTE: For environment-specific paths, use docker-compose.override.yml instead
+      # (see docker-compose.override.yml.example)
+      - /volume1/astrophotography:/data/astrophotography:ro
+      # 
+      # Add more mounts as needed:
+      # - /volume1/photos:/data/photos:ro
+      # - /volume2/backup:/data/backup:ro
+      # 
+      # To find your Synology paths:
+      # 1. SSH into your Synology NAS
+      # 2. Run: ls -la /volume1/ | grep -i photo
+      # 3. Or check in DSM: Control Panel -> Shared Folder
+      # 
+      # Note: In the UI, use the container path (e.g., /data/astrophotography/Deep Sky/SFRO Data/Sh-2 132 4 Panel)
+    environment:
+      - PYTHONUNBUFFERED=1
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: ./astrosummary-ui
+      dockerfile: Dockerfile
+      args:
+        - VITE_API_URL=http://localhost:8000
+    container_name: astrosummary-frontend
+    # Ports are configured in docker-compose.override.yml
+    # Default: "3001:80" - override to change
+    depends_on:
+      - backend
+    restart: unless-stopped
+

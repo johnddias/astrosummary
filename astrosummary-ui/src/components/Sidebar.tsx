@@ -2,7 +2,7 @@ import type { Mode } from '../library/types'
 import { useApp } from '../context/AppContext'
 import classNames from 'classnames'
 
-const MODES: Mode[] = ['Target Data Visualizer', 'AstroBin Export', 'NINA Analyzer', 'Rejection Validation']
+const MODES: Mode[] = ['Target Data Visualizer', 'AstroBin Export', 'NINA Analyzer', 'PHD2 Analyzer', 'Rejection Validation']
 
 export default function Sidebar() {
   const { mode, setMode, backendPath, setBackendPath, recurse, setRecurse, frames, needsRescan, scanProgress, status, scanning, onScan, debugEnabled, setDebugEnabled, colorScheme, setColorScheme } = useApp()

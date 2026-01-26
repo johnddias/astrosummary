@@ -1,0 +1,31 @@
+# Copy this file to docker-compose.override.yml and customize for your environment
+# docker-compose.override.yml is automatically used by docker-compose and is git-ignored
+
+services:
+  backend:
+    ports:
+      # Override default backend port (8000) if needed
+      # Format: "host-port:container-port"
+      # Example: Use port 8001 on host instead of 8000
+      - "8001:8000"
+    volumes:
+      # Override the default volume mount with your specific path
+      # Example for Synology:
+      - /volume1/DiasNAS/__astrophotography:/data/astrophotography:ro
+      # Example for Windows:
+      # - R:/__astrophotography:/data/astrophotography:ro
+      # Example for Linux:
+      # - /mnt/storage/astrophotography:/data/astrophotography:ro
+
+  frontend:
+    ports:
+      # Override default frontend port (3001) if needed
+      # Format: "host-port:container-port"
+      # Example: Use port 3002 on host instead of 3001
+      - "3002:80"
+    build:
+      args:
+        # Update API URL to match your backend port if you changed it above
+        # If backend is on port 8001, use: VITE_API_URL=http://your-nas-ip:8001
+        - VITE_API_URL=http://localhost:8001
+

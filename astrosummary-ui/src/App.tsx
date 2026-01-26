@@ -3,6 +3,7 @@ import { useApp } from './context/AppContext'
 import AstroBinExport from './pages/AstroBinExport'
 import TargetDataVisualizer from './pages/TargetDataVisualizer'
 import NinaAnalyzer from './pages/NinaAnalyzer'
+import PHD2Analyzer from './pages/PHD2Analyzer'
 import RejectionValidation from './pages/RejectionValidation'
 
 export default function App() {
@@ -14,6 +15,7 @@ export default function App() {
   {mode === 'AstroBin Export' && <AstroBinExport />}
   {mode === 'Target Data Visualizer' && <TargetDataVisualizer />}
   {mode === 'NINA Analyzer' && <NinaAnalyzer />}
+  {mode === 'PHD2 Analyzer' && <PHD2Analyzer />}
   {mode === 'Rejection Validation' && <RejectionValidation frames={frames} rejectionData={rejectionData ?? null} />}
   {/* Target Filter Report moved into Target Data Visualizer view */}
       </main>

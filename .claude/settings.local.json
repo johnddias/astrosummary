@@ -1,0 +1,15 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git add:*)",
+      "Bash(git push)",
+      "Bash(git pull:*)",
+      "Bash(git fetch:*)",
+      "Bash(git commit:*)",
+      "Bash(npm run build:*)",
+      "Bash(npx tsc -b)",
+      "Bash(./node_modules/.bin/tsc:*)",
+      "Bash(python:*)"
+    ]
+  }
+}

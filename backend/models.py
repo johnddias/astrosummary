@@ -71,3 +71,72 @@ class ValidationResponse(BaseModel):
     """Response from validation analysis"""
     results: List[ValidationResult]
     summary: Dict[str, Any]  # Statistics about validation
+
+
+# PHD2 Settle Analysis Models
+
+class PHD2SettleEvent(BaseModel):
+    """A single settle completion event from PHD2"""
+    timestamp: str  # ISO format
+    success: bool
+    status: int  # 0 = success, 1 = failure
+    total_frames: int
+    dropped_frames: int = 0
+    settle_time_sec: float
+    error: Optional[str] = None
+    failure_reason: Optional[str] = None  # "timeout", "lost_star", "guiding_stopped", "other"
+
+
+class PHD2DitherCommand(BaseModel):
+    """A dither command sent to PHD2"""
+    timestamp: str  # ISO format
+    amount: float
+    ra_only: bool
+    settle_pixels: float
+    settle_time: float
+    settle_timeout: float
+
+
+class PHD2SettleStatistics(BaseModel):
+    """Aggregate statistics for settling performance"""
+    total_attempts: int
+    successful: int
+    failed: int
+    success_rate: float  # Percentage
+
+    # Timing stats (successful settles only)
+    avg_settle_time_sec: float
+    min_settle_time_sec: float
+    max_settle_time_sec: float
+    median_settle_time_sec: float
+
+    # Frame count distribution
+    frame_distribution: Dict[int, int]
+
+    # Failure breakdown
+    failure_reasons: Dict[str, int]
+
+
+class PHD2SessionStats(BaseModel):
+    """Per-session statistics"""
+    file: str
+    date: str
+    total: int
+    successful: int
+    failed: int
+    success_rate: float
+
+
+class PHD2AnalyzeRequest(BaseModel):
+    """Request to analyze PHD2 debug logs"""
+    path: str  # Path to debug log file or directory
+
+
+class PHD2AnalyzeResponse(BaseModel):
+    """Response from PHD2 debug log analysis"""
+    success: bool
+    error: Optional[str] = None
+    statistics: Optional[PHD2SettleStatistics] = None
+    sessions: List[PHD2SessionStats] = []
+    events: List[PHD2SettleEvent] = []
+    dithers: List[PHD2DitherCommand] = []

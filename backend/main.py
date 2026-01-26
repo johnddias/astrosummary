@@ -1,7 +1,9 @@
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from models import (ScanRequest, ScanResponse, LightFrame, BackendSettings,
-                    ValidationRequest, ValidationResponse, ValidationResult, QualityMetrics)
+                    ValidationRequest, ValidationResponse, ValidationResult, QualityMetrics,
+                    PHD2AnalyzeRequest, PHD2AnalyzeResponse, PHD2SettleStatistics,
+                    PHD2SessionStats, PHD2SettleEvent, PHD2DitherCommand)
 from scanner import scan_directory, stream_scan_directory
 from fastapi.responses import StreamingResponse, Response
 import json
@@ -42,6 +44,15 @@ try:
 except Exception as exc:
     parse_rejection_log = None
     logger.warning("rejection_log_parser not importable: %s", exc)
+
+# Try to import the PHD2 debug log parser
+try:
+    from phd2_debug_parser import PHD2DebugParser, parse_phd2_debug_log, parse_phd2_debug_directory
+except Exception as exc:
+    PHD2DebugParser = None
+    parse_phd2_debug_log = None
+    parse_phd2_debug_directory = None
+    logger.warning("phd2_debug_parser not importable: %s", exc)
 
 SETTINGS_FILE = Path(__file__).resolve().parent / 'settings.json'
 
@@ -344,6 +355,141 @@ def export_rejected_frames_csv(request_data: dict):
     except Exception as e:
         logger.exception("CSV export error")
         raise HTTPException(status_code=500, detail=f'CSV export error: {e}')
+
+
+# =============================================================================
+# PHD2 Debug Log Analysis Endpoints
+# =============================================================================
+
+@app.post('/phd2/analyze', response_model=PHD2AnalyzeResponse)
+async def analyze_phd2_logs(request: PHD2AnalyzeRequest):
+    """
+    Analyze PHD2 debug logs for settling statistics.
+
+    Parses PHD2 debug log files to extract:
+    - Settle success/failure rates
+    - Average settle times
+    - Failure reason breakdown (timeout, lost star, guiding stopped)
+    - Per-session statistics
+    - Dither command details
+
+    The path can be either:
+    - A single debug log file (PHD2_DebugLog_*.txt)
+    - A directory containing multiple debug logs
+    """
+    logger.info(f"PHD2 analyze request: path={request.path}")
+
+    if PHD2DebugParser is None:
+        logger.warning("phd2_debug_parser not available on server")
+        raise HTTPException(
+            status_code=500,
+            detail="phd2_debug_parser not available on server"
+        )
+
+    try:
+        path = Path(request.path)
+
+        if not path.exists():
+            raise HTTPException(
+                status_code=400,
+                detail=f"Path not found: {request.path}"
+            )
+
+        if path.is_dir():
+            # Parse all debug logs in directory
+            result = parse_phd2_debug_directory(str(path))
+        else:
+            # Parse single file
+            result = parse_phd2_debug_log(str(path))
+
+        if not result.get("success", False):
+            return PHD2AnalyzeResponse(
+                success=False,
+                error=result.get("error", "Unknown error parsing PHD2 logs")
+            )
+
+        # Convert to response model
+        stats = result.get("statistics", {})
+        statistics = PHD2SettleStatistics(
+            total_attempts=stats.get("total_attempts", 0),
+            successful=stats.get("successful", 0),
+            failed=stats.get("failed", 0),
+            success_rate=stats.get("success_rate", 0.0),
+            avg_settle_time_sec=stats.get("avg_settle_time_sec", 0.0),
+            min_settle_time_sec=stats.get("min_settle_time_sec", 0.0),
+            max_settle_time_sec=stats.get("max_settle_time_sec", 0.0),
+            median_settle_time_sec=stats.get("median_settle_time_sec", 0.0),
+            frame_distribution=stats.get("frame_distribution", {}),
+            failure_reasons=stats.get("failure_reasons", {})
+        )
+
+        # Convert sessions
+        sessions = [
+            PHD2SessionStats(**s) for s in result.get("sessions", [])
+        ]
+
+        # Convert events
+        events = [
+            PHD2SettleEvent(**e) for e in result.get("events", [])
+        ]
+
+        # Convert dithers
+        dithers = [
+            PHD2DitherCommand(**d) for d in result.get("dithers", [])
+        ]
+
+        return PHD2AnalyzeResponse(
+            success=True,
+            statistics=statistics,
+            sessions=sessions,
+            events=events,
+            dithers=dithers
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.exception("PHD2 analyze error")
+        raise HTTPException(status_code=500, detail=f"PHD2 analyze error: {e}")
+
+
+@app.post('/phd2/analyze_upload')
+async def analyze_phd2_upload(file: UploadFile = File(...)):
+    """
+    Analyze an uploaded PHD2 debug log file.
+
+    Upload a single PHD2_DebugLog_*.txt file for analysis.
+    """
+    logger.info(f"PHD2 upload analyze request: filename={getattr(file, 'filename', '<unknown>')}")
+
+    if PHD2DebugParser is None:
+        logger.warning("phd2_debug_parser not available on server")
+        raise HTTPException(
+            status_code=500,
+            detail="phd2_debug_parser not available on server"
+        )
+
+    try:
+        # Read uploaded file
+        data = await file.read()
+        text = data.decode('utf-8', errors='replace')
+
+        # Save to temp file for parser
+        import tempfile
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.txt', delete=False, encoding='utf-8') as tmp_file:
+            tmp_file.write(text)
+            tmp_path = tmp_file.name
+
+        try:
+            result = parse_phd2_debug_log(tmp_path)
+            result['original_filename'] = getattr(file, 'filename', 'unknown')
+            return result
+        finally:
+            Path(tmp_path).unlink(missing_ok=True)
+
+    except Exception as e:
+        logger.exception("PHD2 upload analyze error")
+        raise HTTPException(status_code=500, detail=f"PHD2 analyze error: {e}")
 
 
 @app.post('/analyze/test_validation_request')
