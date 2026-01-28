@@ -1,6 +1,8 @@
 import { useState } from 'react'
 import ChartCard from '../components/ChartCard'
+import CollapsibleSection from '../components/CollapsibleSection'
 import { API_URL } from '../lib/apiConfig'
+import { useApp } from '../context/AppContext'
 
 interface PHD2SettleEvent {
   timestamp: string
@@ -35,12 +37,22 @@ interface PHD2Statistics {
   failure_reasons: Record<string, number>
 }
 
+interface PHD2StarLostEvent {
+  timestamp: string
+  reason: string
+  snr: number
+  mass: number
+  error_code: number
+}
+
 interface PHD2AnalyzeResponse {
   success: boolean
   error: string | null
   statistics: PHD2Statistics | null
   sessions: PHD2SessionStats[]
   events: PHD2SettleEvent[]
+  star_lost_events: PHD2StarLostEvent[]
+  original_filename?: string
 }
 
 function formatTime(seconds: number): string {
@@ -61,12 +73,21 @@ function ProgressBar({ value, max, color = 'bg-accent-primary' }: { value: numbe
 }
 
 export default function PHD2Analyzer() {
+  const {
+    phd2Analysis,
+    setPhd2Analysis,
+    phd2ShowAllEvents: showAllEvents,
+    setPhd2ShowAllEvents: setShowAllEvents,
+    phd2EventFilter: eventFilter,
+    setPhd2EventFilter: setEventFilter,
+    phd2ShowAllStarLost: showAllStarLost,
+    setPhd2ShowAllStarLost: setShowAllStarLost,
+  } = useApp()
+  const result = phd2Analysis as PHD2AnalyzeResponse | null
+  const setResult = setPhd2Analysis
   const [file, setFile] = useState<File | null>(null)
   const [loading, setLoading] = useState(false)
-  const [result, setResult] = useState<PHD2AnalyzeResponse | null>(null)
   const [error, setError] = useState<string | null>(null)
-  const [showAllEvents, setShowAllEvents] = useState(false)
-  const [eventFilter, setEventFilter] = useState<'all' | 'success' | 'failed'>('all')
 
   async function submit() {
     if (!file) return
@@ -117,6 +138,11 @@ export default function PHD2Analyzer() {
                 {loading ? 'Analyzing...' : 'Analyze'}
               </button>
             </div>
+            {result?.original_filename && (
+              <div className="mt-2 text-xs text-text-secondary">
+                Last analyzed: <span className="font-medium">{result.original_filename}</span>
+              </div>
+            )}
           </div>
 
           {error && <div className="mt-2 text-red-400">{error}</div>}
@@ -130,7 +156,7 @@ export default function PHD2Analyzer() {
           {result && result.success && result.statistics && (
             <div className="mt-4 space-y-6 text-sm text-text-secondary">
               {/* Summary Cards */}
-              <div className="grid grid-cols-4 gap-4">
+              <div className="grid grid-cols-5 gap-4">
                 <div className="p-3 bg-slate-800 rounded">
                   <div className="text-xs text-text-secondary">Total Settles</div>
                   <div className="text-2xl font-semibold text-text-primary">{result.statistics.total_attempts}</div>
@@ -146,6 +172,10 @@ export default function PHD2Analyzer() {
                 <div className="p-3 bg-slate-800 rounded border-l-4 border-accent-primary">
                   <div className="text-xs text-accent-primary">Success Rate</div>
                   <div className="text-2xl font-semibold text-accent-primary">{result.statistics.success_rate.toFixed(1)}%</div>
+                </div>
+                <div className="p-3 bg-slate-800 rounded border-l-4 border-orange-500">
+                  <div className="text-xs text-orange-400">Star Lost</div>
+                  <div className="text-2xl font-semibold text-orange-400">{result.star_lost_events?.length ?? 0}</div>
                 </div>
               </div>
 
@@ -225,99 +255,153 @@ export default function PHD2Analyzer() {
               {/* Per-Session Stats */}
               {result.sessions && result.sessions.length > 0 && (
                 <div>
-                  <div className="font-semibold mb-3 text-text-primary">Per-Session Breakdown</div>
-                  <div className="overflow-auto max-h-64">
-                    <table className="min-w-full text-sm">
-                      <thead className="text-left text-xs text-text-secondary">
-                        <tr>
-                          <th className="pr-3">Date</th>
-                          <th className="pr-3">File</th>
-                          <th className="pr-3 text-right">Total</th>
-                          <th className="pr-3 text-right">Success</th>
-                          <th className="pr-3 text-right">Failed</th>
-                          <th className="pr-3 text-right">Rate</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {result.sessions.map((s, idx) => (
-                          <tr key={idx} className="border-t border-slate-700">
-                            <td className="pr-3 py-1">{s.date}</td>
-                            <td className="pr-3 py-1 text-xs text-text-secondary truncate max-w-xs" title={s.file}>
-                              {s.file.split(/[/\\]/).pop()}
-                            </td>
-                            <td className="pr-3 py-1 text-right">{s.total}</td>
-                            <td className="pr-3 py-1 text-right text-green-400">{s.successful}</td>
-                            <td className="pr-3 py-1 text-right text-red-400">{s.failed}</td>
-                            <td className="pr-3 py-1 text-right font-medium">
-                              <span className={s.success_rate >= 80 ? 'text-green-400' : s.success_rate >= 60 ? 'text-yellow-400' : 'text-red-400'}>
-                                {s.success_rate.toFixed(1)}%
-                              </span>
-                            </td>
+                  <CollapsibleSection
+                    title={<span className="text-text-primary">Per-Session Breakdown ({result.sessions.length} sessions)</span>}
+                  >
+                    <div className="overflow-auto max-h-64">
+                      <table className="min-w-full text-sm">
+                        <thead className="text-left text-xs text-text-secondary">
+                          <tr>
+                            <th className="pr-3">Date</th>
+                            <th className="pr-3">File</th>
+                            <th className="pr-3 text-right">Total</th>
+                            <th className="pr-3 text-right">Success</th>
+                            <th className="pr-3 text-right">Failed</th>
+                            <th className="pr-3 text-right">Rate</th>
                           </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
+                        </thead>
+                        <tbody>
+                          {result.sessions.map((s, idx) => (
+                            <tr key={idx} className="border-t border-slate-700">
+                              <td className="pr-3 py-1">{s.date}</td>
+                              <td className="pr-3 py-1 text-xs text-text-secondary truncate max-w-xs" title={s.file}>
+                                {s.file.split(/[/\\]/).pop()}
+                              </td>
+                              <td className="pr-3 py-1 text-right">{s.total}</td>
+                              <td className="pr-3 py-1 text-right text-green-400">{s.successful}</td>
+                              <td className="pr-3 py-1 text-right text-red-400">{s.failed}</td>
+                              <td className="pr-3 py-1 text-right font-medium">
+                                <span className={s.success_rate >= 80 ? 'text-green-400' : s.success_rate >= 60 ? 'text-yellow-400' : 'text-red-400'}>
+                                  {s.success_rate.toFixed(1)}%
+                                </span>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </CollapsibleSection>
                 </div>
               )}
 
               {/* Settle Events Table */}
               {result.events && result.events.length > 0 && (
                 <div>
-                  <div className="flex items-center justify-between mb-3">
-                    <div className="font-semibold text-text-primary">
-                      Settle Events ({filteredEvents.length} of {result.events.length})
+                  <CollapsibleSection
+                    title={
+                      <span className="text-text-primary">
+                        Settle Events ({filteredEvents.length} of {result.events.length})
+                      </span>
+                    }
+                    headerRight={
+                      <div className="flex items-center gap-3">
+                        <select
+                          className="px-2 py-1 text-sm rounded bg-slate-700 border border-slate-600 text-text-primary"
+                          value={eventFilter}
+                          onChange={(e) => setEventFilter(e.target.value as any)}
+                        >
+                          <option value="all">All Events</option>
+                          <option value="success">Successful Only</option>
+                          <option value="failed">Failed Only</option>
+                        </select>
+                        {filteredEvents.length > 50 && (
+                          <button
+                            className="text-xs px-2 py-1 rounded bg-slate-700 hover:bg-slate-600 text-text-secondary"
+                            onClick={() => setShowAllEvents(!showAllEvents)}
+                          >
+                            {showAllEvents ? 'Show First 50' : `Show All ${filteredEvents.length}`}
+                          </button>
+                        )}
+                      </div>
+                    }
+                  >
+                    <div className="overflow-auto max-h-80">
+                      <table className="min-w-full text-sm">
+                        <thead className="text-left text-xs text-text-secondary sticky top-0 bg-bg-card">
+                          <tr>
+                            <th className="pr-3 py-1">Timestamp</th>
+                            <th className="pr-3 py-1">Status</th>
+                            <th className="pr-3 py-1 text-right">Frames</th>
+                            <th className="pr-3 py-1 text-right">Time</th>
+                            <th className="pr-3 py-1">Error</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {displayedEvents.map((e, idx) => (
+                            <tr key={idx} className={`border-t border-slate-700 ${e.success ? '' : 'bg-red-900/20'}`}>
+                              <td className="pr-3 py-1 text-xs">{e.timestamp.replace('T', ' ')}</td>
+                              <td className="pr-3 py-1">
+                                <span className={`inline-block px-2 py-0.5 rounded text-xs ${e.success ? 'bg-green-900/50 text-green-400' : 'bg-red-900/50 text-red-400'}`}>
+                                  {e.success ? 'OK' : 'FAIL'}
+                                </span>
+                              </td>
+                              <td className="pr-3 py-1 text-right">{e.total_frames}</td>
+                              <td className="pr-3 py-1 text-right">{formatTime(e.settle_time_sec)}</td>
+                              <td className="pr-3 py-1 text-xs text-text-secondary truncate max-w-xs" title={e.error || ''}>
+                                {e.failure_reason || e.error || '-'}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
                     </div>
-                    <div className="flex items-center gap-3">
-                      <select
-                        className="px-2 py-1 text-sm rounded bg-slate-700 border border-slate-600 text-text-primary"
-                        value={eventFilter}
-                        onChange={(e) => setEventFilter(e.target.value as any)}
-                      >
-                        <option value="all">All Events</option>
-                        <option value="success">Successful Only</option>
-                        <option value="failed">Failed Only</option>
-                      </select>
-                      {filteredEvents.length > 50 && (
+                  </CollapsibleSection>
+                </div>
+              )}
+
+              {/* Star Lost Events Table */}
+              {result.star_lost_events && result.star_lost_events.length > 0 && (
+                <div>
+                  <CollapsibleSection
+                    title={
+                      <span className="text-text-primary">
+                        Star Lost Events ({result.star_lost_events.length})
+                      </span>
+                    }
+                    headerRight={
+                      result.star_lost_events.length > 50 ? (
                         <button
                           className="text-xs px-2 py-1 rounded bg-slate-700 hover:bg-slate-600 text-text-secondary"
-                          onClick={() => setShowAllEvents(!showAllEvents)}
+                          onClick={() => setShowAllStarLost(!showAllStarLost)}
                         >
-                          {showAllEvents ? 'Show First 50' : `Show All ${filteredEvents.length}`}
+                          {showAllStarLost ? 'Show First 50' : `Show All ${result.star_lost_events.length}`}
                         </button>
-                      )}
-                    </div>
-                  </div>
-                  <div className="overflow-auto max-h-80">
-                    <table className="min-w-full text-sm">
-                      <thead className="text-left text-xs text-text-secondary sticky top-0 bg-bg-card">
-                        <tr>
-                          <th className="pr-3 py-1">Timestamp</th>
-                          <th className="pr-3 py-1">Status</th>
-                          <th className="pr-3 py-1 text-right">Frames</th>
-                          <th className="pr-3 py-1 text-right">Time</th>
-                          <th className="pr-3 py-1">Error</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {displayedEvents.map((e, idx) => (
-                          <tr key={idx} className={`border-t border-slate-700 ${e.success ? '' : 'bg-red-900/20'}`}>
-                            <td className="pr-3 py-1 text-xs">{e.timestamp.replace('T', ' ')}</td>
-                            <td className="pr-3 py-1">
-                              <span className={`inline-block px-2 py-0.5 rounded text-xs ${e.success ? 'bg-green-900/50 text-green-400' : 'bg-red-900/50 text-red-400'}`}>
-                                {e.success ? 'OK' : 'FAIL'}
-                              </span>
-                            </td>
-                            <td className="pr-3 py-1 text-right">{e.total_frames}</td>
-                            <td className="pr-3 py-1 text-right">{formatTime(e.settle_time_sec)}</td>
-                            <td className="pr-3 py-1 text-xs text-text-secondary truncate max-w-xs" title={e.error || ''}>
-                              {e.failure_reason || e.error || '-'}
-                            </td>
+                      ) : undefined
+                    }
+                  >
+                    <div className="overflow-auto max-h-80">
+                      <table className="min-w-full text-sm">
+                        <thead className="text-left text-xs text-text-secondary sticky top-0 bg-bg-card">
+                          <tr>
+                            <th className="pr-3 py-1">Timestamp</th>
+                            <th className="pr-3 py-1">Reason</th>
+                            <th className="pr-3 py-1 text-right">SNR</th>
+                            <th className="pr-3 py-1 text-right">Mass</th>
                           </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
+                        </thead>
+                        <tbody>
+                          {(showAllStarLost ? result.star_lost_events : result.star_lost_events.slice(0, 50)).map((s, idx) => (
+                            <tr key={idx} className="border-t border-slate-700 bg-orange-900/20">
+                              <td className="pr-3 py-1 text-xs">{s.timestamp.replace('T', ' ')}</td>
+                              <td className="pr-3 py-1 text-orange-400">{s.reason || 'unknown'}</td>
+                              <td className="pr-3 py-1 text-right">{s.snr.toFixed(2)}</td>
+                              <td className="pr-3 py-1 text-right">{s.mass.toFixed(1)}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </CollapsibleSection>
                 </div>
               )}
             </div>

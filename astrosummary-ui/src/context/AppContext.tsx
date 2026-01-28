@@ -4,6 +4,10 @@ import { scanFrames } from '../library/scan'
 import { normalizeFilter } from '../library/filters'
 import type { LightFrame, Mode, RejectionData } from '../library/types'
 
+// Analysis result types for persistence
+export type NinaAnalysisResult = any  // Full response from /nina/analyze
+export type PHD2AnalysisResult = any  // Full response from /phd2/analyze_upload
+
 type Ctx = {
   mode: Mode
   setMode: (m: Mode) => void
@@ -39,6 +43,27 @@ type Ctx = {
   colorScheme: string
   setColorScheme: (s: string) => void
   colors: Record<string, string>
+  // Persisted analysis results
+  ninaAnalysis: NinaAnalysisResult | null
+  setNinaAnalysis: (r: NinaAnalysisResult | null) => void
+  phd2Analysis: PHD2AnalysisResult | null
+  setPhd2Analysis: (r: PHD2AnalysisResult | null) => void
+
+  // NINA analyzer filter state
+  ninaSelectedFilters: Set<string>
+  setNinaSelectedFilters: (s: Set<string>) => void
+  ninaSelectedHourFilter: string | null
+  setNinaSelectedHourFilter: (s: string | null) => void
+  ninaSelectedTagFilters: Set<string>
+  setNinaSelectedTagFilters: (s: Set<string>) => void
+
+  // PHD2 analyzer filter state
+  phd2ShowAllEvents: boolean
+  setPhd2ShowAllEvents: (v: boolean) => void
+  phd2EventFilter: 'all' | 'success' | 'failed'
+  setPhd2EventFilter: (v: 'all' | 'success' | 'failed') => void
+  phd2ShowAllStarLost: boolean
+  setPhd2ShowAllStarLost: (v: boolean) => void
 }
 
 const AppContext = createContext<Ctx | undefined>(undefined)
@@ -95,6 +120,21 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     }
   }
   const colors = palettes[colorScheme] || palettes.muted
+
+  // Persisted analysis results
+  const [ninaAnalysis, setNinaAnalysis] = useState<NinaAnalysisResult | null>(null)
+  const [phd2Analysis, setPhd2Analysis] = useState<PHD2AnalysisResult | null>(null)
+
+  // NINA analyzer filter state
+  const [ninaSelectedFilters, setNinaSelectedFilters] = useState<Set<string>>(new Set())
+  const [ninaSelectedHourFilter, setNinaSelectedHourFilter] = useState<string | null>(null)
+  const [ninaSelectedTagFilters, setNinaSelectedTagFilters] = useState<Set<string>>(new Set())
+
+  // PHD2 analyzer filter state
+  const [phd2ShowAllEvents, setPhd2ShowAllEvents] = useState(false)
+  const [phd2EventFilter, setPhd2EventFilter] = useState<'all' | 'success' | 'failed'>('all')
+  const [phd2ShowAllStarLost, setPhd2ShowAllStarLost] = useState(false)
+
     const [desiredHours, setDesiredHoursState] = useState<number | undefined>(() => {
         try {
           const s = localStorage.getItem('desiredHours')
@@ -200,7 +240,23 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   colorScheme,
   setColorScheme,
   colors,
-  }), [mode, backendPath, recurse, frames, rejectionData, applyRejectionFilter, desiredHours, scanning, status, needsRescan, debugEnabledState, scanProgress, colorScheme, colors])
+  ninaAnalysis,
+  setNinaAnalysis,
+  phd2Analysis,
+  setPhd2Analysis,
+  ninaSelectedFilters,
+  setNinaSelectedFilters,
+  ninaSelectedHourFilter,
+  setNinaSelectedHourFilter,
+  ninaSelectedTagFilters,
+  setNinaSelectedTagFilters,
+  phd2ShowAllEvents,
+  setPhd2ShowAllEvents,
+  phd2EventFilter,
+  setPhd2EventFilter,
+  phd2ShowAllStarLost,
+  setPhd2ShowAllStarLost,
+  }), [mode, backendPath, recurse, frames, rejectionData, applyRejectionFilter, desiredHours, scanning, status, needsRescan, debugEnabledState, scanProgress, colorScheme, colors, ninaAnalysis, phd2Analysis, ninaSelectedFilters, ninaSelectedHourFilter, ninaSelectedTagFilters, phd2ShowAllEvents, phd2EventFilter, phd2ShowAllStarLost])
 
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>
 }

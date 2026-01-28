@@ -37,6 +37,16 @@ GUIDING_BEGINS_RE = re.compile(
     r'Guiding Begins at\s+(?P<date>\d{4}-\d{2}-\d{2})\s+(?P<time>\d{2}:\d{2}:\d{2})'
 )
 
+# Pattern to match "Status Line: Star lost" messages (plain text, not JSON)
+# Format: HH:MM:SS.mmm XX.XXX THREAD Status Line: Star lost - reason
+STAR_LOST_RE = re.compile(
+    r'^(?P<time>\d{2}:\d{2}:\d{2}\.\d{3})\s+'  # Timestamp
+    r'[\d.]+\s+'                                # Delta time
+    r'\d+\s+'                                   # Thread ID
+    r'Status Line:\s*Star lost\s*-?\s*(?P<reason>.*?)\s*$',  # Star lost message with reason
+    re.IGNORECASE
+)
+
 # Pattern to extract log file date from filename
 LOG_FILENAME_RE = re.compile(
     r'PHD2_DebugLog_(?P<date>\d{4}-\d{2}-\d{2})_(?P<time>\d{6})\.txt'
@@ -96,6 +106,16 @@ class SettleProgress:
 
 
 @dataclass
+class StarLostEvent:
+    """A star lost event from PHD2"""
+    timestamp: datetime
+    reason: str = ""  # Reason for star loss (e.g., "mass changed", "SNR too low")
+    snr: float = 0.0  # Signal-to-noise ratio at time of loss (if available)
+    mass: float = 0.0  # Star mass at time of loss (if available)
+    error_code: int = 0
+
+
+@dataclass
 class SettleStatistics:
     """Aggregate statistics for settling performance"""
     total_attempts: int = 0
@@ -129,6 +149,7 @@ class PHD2DebugParser:
         self.settle_events: List[SettleEvent] = []
         self.dither_commands: List[DitherCommand] = []
         self.settle_progress: List[SettleProgress] = []
+        self.star_lost_events: List[StarLostEvent] = []
         self._current_date: Optional[datetime] = None
 
     def parse_log_directory(self, log_dir: str) -> SettleStatistics:
@@ -156,13 +177,15 @@ class PHD2DebugParser:
 
         all_settle_events: List[SettleEvent] = []
         all_dither_commands: List[DitherCommand] = []
+        all_star_lost_events: List[StarLostEvent] = []
         session_stats: List[Dict] = []
 
         for log_file in log_files:
             try:
-                events, dithers = self.parse_log(str(log_file))
+                events, dithers, star_lost = self.parse_log(str(log_file))
                 all_settle_events.extend(events)
                 all_dither_commands.extend(dithers)
+                all_star_lost_events.extend(star_lost)
 
                 # Calculate per-session stats
                 if events:
@@ -186,10 +209,11 @@ class PHD2DebugParser:
 
         self.settle_events = all_settle_events
         self.dither_commands = all_dither_commands
+        self.star_lost_events = all_star_lost_events
 
         return stats
 
-    def parse_log(self, log_path: str) -> Tuple[List[SettleEvent], List[DitherCommand]]:
+    def parse_log(self, log_path: str) -> Tuple[List[SettleEvent], List[DitherCommand], List[StarLostEvent]]:
         """
         Parse a single PHD2 debug log file.
 
@@ -197,21 +221,39 @@ class PHD2DebugParser:
             log_path: Path to PHD2 debug log file
 
         Returns:
-            Tuple of (settle_events, dither_commands)
+            Tuple of (settle_events, dither_commands, star_lost_events)
         """
         log_file = Path(log_path)
         if not log_file.exists():
             logger.error(f"PHD2 debug log not found: {log_path}")
-            return [], []
+            return [], [], []
 
         settle_events: List[SettleEvent] = []
         dither_commands: List[DitherCommand] = []
+        star_lost_events: List[StarLostEvent] = []
 
-        # Try to extract date from filename
+        # Try to extract date from filename - this is authoritative for the session
         filename_match = LOG_FILENAME_RE.match(log_file.name)
+        self._date_from_filename = False
+        self._last_timestamp = None
+
         if filename_match:
             date_str = filename_match.group("date")
+            time_str = filename_match.group("time")  # Format: HHMMSS
             self._current_date = datetime.strptime(date_str, "%Y-%m-%d")
+            self._date_from_filename = True
+
+            # Initialize _last_timestamp from filename time for day rollover detection
+            # This helps detect midnight crossings for the first events in the file
+            try:
+                file_time = datetime.strptime(time_str, "%H%M%S")
+                self._last_timestamp = self._current_date.replace(
+                    hour=file_time.hour,
+                    minute=file_time.minute,
+                    second=file_time.second
+                )
+            except ValueError:
+                pass
         else:
             self._current_date = None
 
@@ -222,11 +264,28 @@ class PHD2DebugParser:
                     if not line:
                         continue
 
-                    # Check for "Guiding Begins" to update date context
+                    # Check for "Guiding Begins" to get date context (only if not from filename)
                     guiding_match = GUIDING_BEGINS_RE.search(line)
                     if guiding_match:
-                        date_str = guiding_match.group("date")
-                        self._current_date = datetime.strptime(date_str, "%Y-%m-%d")
+                        # Only use this date if we don't have a date from the filename
+                        # The filename date is authoritative for the session (imaging sessions
+                        # often span midnight, so "Guiding Begins" might be on the next day)
+                        if not self._date_from_filename:
+                            date_str = guiding_match.group("date")
+                            self._current_date = datetime.strptime(date_str, "%Y-%m-%d")
+                        continue
+
+                    # Check for plain text "Star lost" status line
+                    star_lost_match = STAR_LOST_RE.match(line)
+                    if star_lost_match:
+                        time_str = star_lost_match.group("time")
+                        reason = star_lost_match.group("reason").strip()
+                        timestamp = self._parse_timestamp(time_str, None)
+                        if timestamp:
+                            star_lost_events.append(StarLostEvent(
+                                timestamp=timestamp,
+                                reason=reason if reason else "unknown"
+                            ))
                         continue
 
                     # Try to parse JSON event line
@@ -261,6 +320,11 @@ class PHD2DebugParser:
                             if progress:
                                 self.settle_progress.append(progress)
 
+                        elif event_type == "StarLost":
+                            star_lost = self._parse_star_lost(timestamp, data)
+                            if star_lost:
+                                star_lost_events.append(star_lost)
+
                     elif "method" in data:
                         method = data.get("method")
 
@@ -274,30 +338,29 @@ class PHD2DebugParser:
                             if dither:
                                 dither_commands.append(dither)
 
-            return settle_events, dither_commands
+            return settle_events, dither_commands, star_lost_events
 
         except Exception as e:
             logger.error(f"Error parsing PHD2 debug log {log_path}: {e}")
-            return [], []
+            return [], [], []
 
     def _parse_timestamp(self, time_str: str, json_data: dict = None) -> Optional[datetime]:
         """Parse time string and combine with current date.
 
-        If json_data contains a Unix 'Timestamp' field, use that directly.
-        Otherwise fall back to combining time_str with current date.
+        Uses the time string from the log line (which is local time) for the time portion.
+        If we don't have a current date yet (no filename or "Guiding Begins" date),
+        try to extract the date from the JSON Timestamp as a last resort.
         """
-        # Prefer Unix timestamp from JSON if available
-        if json_data and "Timestamp" in json_data:
+        # If we don't have a date yet, try to get it from JSON Timestamp (last resort)
+        if not self._current_date and json_data and "Timestamp" in json_data:
             try:
                 unix_ts = json_data["Timestamp"]
-                timestamp = datetime.fromtimestamp(unix_ts)
-                # Update current date from Unix timestamp for events without it
-                self._current_date = timestamp.replace(hour=0, minute=0, second=0, microsecond=0)
-                return timestamp
+                # Use the date portion only - extract from timestamp
+                ts_datetime = datetime.fromtimestamp(unix_ts)
+                self._current_date = ts_datetime.replace(hour=0, minute=0, second=0, microsecond=0)
             except (ValueError, OSError, TypeError):
                 pass
 
-        # Fall back to time string + current date
         if not self._current_date:
             return None
 
@@ -357,6 +420,20 @@ class PHD2DebugParser:
             )
         except Exception as e:
             logger.debug(f"Failed to parse Settling: {e}")
+            return None
+
+    def _parse_star_lost(self, timestamp: datetime, data: dict) -> Optional[StarLostEvent]:
+        """Parse a StarLost JSON event (if PHD2 emits them in this format)."""
+        try:
+            return StarLostEvent(
+                timestamp=timestamp,
+                reason=data.get("Reason", "unknown"),
+                snr=data.get("SNR", 0.0),
+                mass=data.get("Mass", 0.0),
+                error_code=data.get("ErrorCode", 0)
+            )
+        except Exception as e:
+            logger.debug(f"Failed to parse StarLost: {e}")
             return None
 
     def _parse_dither_command(self, timestamp: datetime, data: dict) -> Optional[DitherCommand]:
@@ -457,6 +534,19 @@ class PHD2DebugParser:
             for d in self.dither_commands
         ]
 
+    def get_star_lost_events_as_dicts(self) -> List[Dict]:
+        """Return star lost events as list of dictionaries for JSON serialization."""
+        return [
+            {
+                "timestamp": s.timestamp.isoformat(),
+                "reason": s.reason,
+                "snr": round(s.snr, 2),
+                "mass": round(s.mass, 1),
+                "error_code": s.error_code
+            }
+            for s in self.star_lost_events
+        ]
+
     def correlate_with_nina_dithers(
         self,
         nina_dither_timestamps: List[datetime],
@@ -507,7 +597,7 @@ def parse_phd2_debug_log(log_path: str) -> Dict:
         Dictionary with settle statistics and event details
     """
     parser = PHD2DebugParser()
-    events, dithers = parser.parse_log(log_path)
+    events, dithers, star_lost = parser.parse_log(log_path)
 
     if not events:
         return {
@@ -516,12 +606,14 @@ def parse_phd2_debug_log(log_path: str) -> Dict:
             "statistics": None,
             "sessions": [],
             "events": [],
-            "dithers": []
+            "dithers": [],
+            "star_lost_events": []
         }
 
     stats = parser._compute_statistics(events)
     parser.settle_events = events
     parser.dither_commands = dithers
+    parser.star_lost_events = star_lost
 
     return {
         "success": True,
@@ -539,7 +631,8 @@ def parse_phd2_debug_log(log_path: str) -> Dict:
         },
         "sessions": [],  # Single file has no per-session breakdown
         "events": parser.get_settle_events_as_dicts(),
-        "dithers": parser.get_dither_commands_as_dicts()
+        "dithers": parser.get_dither_commands_as_dicts(),
+        "star_lost_events": parser.get_star_lost_events_as_dicts()
     }
 
 
@@ -569,5 +662,6 @@ def parse_phd2_debug_directory(log_dir: str) -> Dict:
         },
         "sessions": stats.sessions,
         "events": parser.get_settle_events_as_dicts(),
-        "dithers": parser.get_dither_commands_as_dicts()
+        "dithers": parser.get_dither_commands_as_dicts(),
+        "star_lost_events": parser.get_star_lost_events_as_dicts()
     }

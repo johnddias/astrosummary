@@ -161,6 +161,7 @@ async def nina_analyze(file: UploadFile = File(...), download_gap_cap_s: float =
         data = await file.read()
         text = data.decode('utf-8', errors='ignore')
         result = parse_nina_log(text, download_gap_cap_s=download_gap_cap_s)
+        result['original_filename'] = fname
         return result
     except Exception as e:
         # log full traceback to the server logs so the developer can see details
@@ -474,18 +475,24 @@ async def analyze_phd2_upload(file: UploadFile = File(...)):
         data = await file.read()
         text = data.decode('utf-8', errors='replace')
 
-        # Save to temp file for parser
+        # Save to temp file for parser, preserving original filename for date extraction
         import tempfile
-        with tempfile.NamedTemporaryFile(mode='w', suffix='.txt', delete=False, encoding='utf-8') as tmp_file:
+        import os
+        original_filename = getattr(file, 'filename', 'unknown.txt')
+        # Use original filename in temp path so date can be extracted from filename pattern
+        tmp_dir = tempfile.mkdtemp()
+        tmp_path = os.path.join(tmp_dir, original_filename)
+        with open(tmp_path, 'w', encoding='utf-8') as tmp_file:
             tmp_file.write(text)
-            tmp_path = tmp_file.name
 
         try:
             result = parse_phd2_debug_log(tmp_path)
             result['original_filename'] = getattr(file, 'filename', 'unknown')
             return result
         finally:
-            Path(tmp_path).unlink(missing_ok=True)
+            # Clean up temp file and directory
+            import shutil
+            shutil.rmtree(tmp_dir, ignore_errors=True)
 
     except Exception as e:
         logger.exception("PHD2 upload analyze error")

@@ -211,7 +211,11 @@ def _correlate_bursts_with_events(
     correlation_events: List[CorrelationEvent],
     window_seconds: float = 60.0
 ) -> None:
-    """Tag bursts with nearby session events (in-place mutation)."""
+    """Tag bursts with nearby session events (in-place mutation).
+
+    Only looks backward from the burst start time to find events that
+    may have caused the RMS spike (e.g., dither, autofocus).
+    """
     if not bursts or not correlation_events:
         return
 
@@ -220,12 +224,11 @@ def _correlate_bursts_with_events(
     for burst in bursts:
         burst_start = burst.start_ts
         window_start = burst_start - timedelta(seconds=window_seconds)
-        window_end = burst_start + timedelta(seconds=window_seconds)
 
         for ce in sorted_events:
             if ce.timestamp < window_start:
                 continue
-            if ce.timestamp > window_end:
+            if ce.timestamp > burst_start:
                 break
             tag = f"near_{ce.event_type}"
             if tag not in burst.tags:
