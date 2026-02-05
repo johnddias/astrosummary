@@ -3,7 +3,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from models import (ScanRequest, ScanResponse, LightFrame, BackendSettings,
                     ValidationRequest, ValidationResponse, ValidationResult, QualityMetrics,
                     PHD2AnalyzeRequest, PHD2AnalyzeResponse, PHD2SettleStatistics,
-                    PHD2SessionStats, PHD2SettleEvent, PHD2DitherCommand)
+                    PHD2SessionStats, PHD2SettleEvent, PHD2DitherCommand,
+                    UnifiedSessionAnalyzeResponse, SessionMetadataResponse)
 from scanner import scan_directory, stream_scan_directory
 from fastapi.responses import StreamingResponse, Response
 import json
@@ -53,6 +54,15 @@ except Exception as exc:
     parse_phd2_debug_log = None
     parse_phd2_debug_directory = None
     logger.warning("phd2_debug_parser not importable: %s", exc)
+
+# Try to import the session metadata parser and unified session analyzer
+try:
+    from session_metadata_parser import parse_session_metadata_from_content
+    from unified_session_analyzer import analyze_unified_session
+except Exception as exc:
+    parse_session_metadata_from_content = None
+    analyze_unified_session = None
+    logger.warning("unified_session_analyzer not importable: %s", exc)
 
 SETTINGS_FILE = Path(__file__).resolve().parent / 'settings.json'
 
@@ -139,6 +149,70 @@ def scan_stream(req: ScanRequest):
         logger.exception("Error in scan_stream")
         print(f"DEBUG main: ERROR in scan_stream: {type(e).__name__}: {e}", file=sys.stderr, flush=True)
         raise
+
+
+@app.get('/browse')
+def browse_directory(path: str = "/data"):
+    """
+    List directories and FITS files in the given path.
+    Restricted to paths under /data for security.
+    """
+    from typing import List
+    import os
+
+    # Security: ensure path is under /data
+    try:
+        resolved = Path(path).resolve()
+        data_root = Path("/data").resolve()
+
+        # Check if path is under /data
+        if not str(resolved).startswith(str(data_root)):
+            raise HTTPException(status_code=403, detail="Access denied: path must be under /data")
+    except Exception as e:
+        if isinstance(e, HTTPException):
+            raise
+        raise HTTPException(status_code=400, detail=f"Invalid path: {e}")
+
+    if not resolved.exists():
+        raise HTTPException(status_code=404, detail=f"Path not found: {path}")
+
+    if not resolved.is_dir():
+        raise HTTPException(status_code=400, detail=f"Path is not a directory: {path}")
+
+    entries = []
+    try:
+        for entry in sorted(resolved.iterdir()):
+            try:
+                if entry.is_dir():
+                    # Count items in subdirectory (for display)
+                    try:
+                        child_count = sum(1 for _ in entry.iterdir())
+                    except (PermissionError, OSError):
+                        child_count = 0
+                    entries.append({
+                        "name": entry.name,
+                        "path": str(entry),
+                        "type": "directory",
+                        "children_count": child_count
+                    })
+                elif entry.suffix.lower() in ['.fit', '.fits', '.fts']:
+                    entries.append({
+                        "name": entry.name,
+                        "path": str(entry),
+                        "type": "file",
+                        "size": entry.stat().st_size
+                    })
+            except (PermissionError, OSError):
+                # Skip entries we can't access
+                continue
+    except PermissionError:
+        raise HTTPException(status_code=403, detail=f"Permission denied: {path}")
+
+    return {
+        "path": str(resolved),
+        "parent": str(resolved.parent) if resolved != data_root else None,
+        "entries": entries
+    }
 
 
 @app.post('/nina/analyze')
@@ -497,6 +571,105 @@ async def analyze_phd2_upload(file: UploadFile = File(...)):
     except Exception as e:
         logger.exception("PHD2 upload analyze error")
         raise HTTPException(status_code=500, detail=f"PHD2 analyze error: {e}")
+
+
+# =============================================================================
+# Unified Session Analysis Endpoints
+# =============================================================================
+
+@app.post('/session/analyze_upload', response_model=UnifiedSessionAnalyzeResponse)
+async def analyze_session_upload(
+    nina_log: UploadFile = File(None),
+    phd2_debug_log: UploadFile = File(None),
+    acquisition_details: UploadFile = File(None),
+    image_metadata: UploadFile = File(None),
+    weather_data: UploadFile = File(None),
+):
+    """
+    Unified session analysis via file upload.
+
+    Accepts uploads of any combination of:
+    - NINA log (text file)
+    - PHD2 debug log
+    - Session Metadata files (AcquisitionDetails, ImageMetaData, WeatherData)
+
+    Returns comprehensive analysis with cross-source correlations.
+    """
+    logger.info("Session analyze upload request received")
+
+    if analyze_unified_session is None or parse_session_metadata_from_content is None:
+        logger.warning("unified_session_analyzer not available on server")
+        raise HTTPException(
+            status_code=500,
+            detail="unified_session_analyzer not available on server"
+        )
+
+    try:
+        # Read uploaded files
+        nina_log_content = None
+        if nina_log and nina_log.filename:
+            data = await nina_log.read()
+            nina_log_content = data.decode('utf-8', errors='ignore')
+            logger.info(f"NINA log uploaded: {nina_log.filename}")
+
+        phd2_debug_log_content = None
+        phd2_debug_filename = None
+        if phd2_debug_log and phd2_debug_log.filename:
+            data = await phd2_debug_log.read()
+            phd2_debug_log_content = data.decode('utf-8', errors='replace')
+            phd2_debug_filename = phd2_debug_log.filename
+            logger.info(f"PHD2 debug log uploaded: {phd2_debug_log.filename}")
+
+        # Parse Session Metadata files
+        acq_content = None
+        if acquisition_details and acquisition_details.filename:
+            data = await acquisition_details.read()
+            content = data.decode('utf-8', errors='ignore')
+            fmt = 'json' if acquisition_details.filename.lower().endswith('.json') else 'csv'
+            acq_content = (content, fmt)
+            logger.info(f"AcquisitionDetails uploaded: {acquisition_details.filename}")
+
+        img_content = None
+        if image_metadata and image_metadata.filename:
+            data = await image_metadata.read()
+            content = data.decode('utf-8', errors='ignore')
+            fmt = 'json' if image_metadata.filename.lower().endswith('.json') else 'csv'
+            img_content = (content, fmt)
+            logger.info(f"ImageMetaData uploaded: {image_metadata.filename}")
+
+        weather_content = None
+        if weather_data and weather_data.filename:
+            data = await weather_data.read()
+            content = data.decode('utf-8', errors='ignore')
+            fmt = 'json' if weather_data.filename.lower().endswith('.json') else 'csv'
+            weather_content = (content, fmt)
+            logger.info(f"WeatherData uploaded: {weather_data.filename}")
+
+        # Parse session metadata from uploaded content
+        session_metadata = None
+        if acq_content or img_content or weather_content:
+            session_metadata = parse_session_metadata_from_content(
+                acquisition_details_content=acq_content,
+                image_metadata_content=img_content,
+                weather_data_content=weather_content,
+            )
+            logger.info(f"Session metadata parsed: {session_metadata.file_count} files, {len(session_metadata.image_metadata)} frames")
+
+        # Run unified analysis
+        result = analyze_unified_session(
+            nina_log_content=nina_log_content,
+            phd2_debug_log_content=phd2_debug_log_content,
+            session_metadata=session_metadata,
+        )
+
+        logger.info(f"Session analysis complete: success={result.success}, frames={len(result.frames)}")
+        return result
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.exception("Session analyze upload error")
+        raise HTTPException(status_code=500, detail=f"Session analyze error: {e}")
 
 
 @app.post('/analyze/test_validation_request')

@@ -7,6 +7,7 @@ import type { LightFrame, Mode, RejectionData } from '../library/types'
 // Analysis result types for persistence
 export type NinaAnalysisResult = any  // Full response from /nina/analyze
 export type PHD2AnalysisResult = any  // Full response from /phd2/analyze_upload
+export type SessionAnalysisResult = any  // Full response from /session/analyze_upload
 
 type Ctx = {
   mode: Mode
@@ -48,6 +49,8 @@ type Ctx = {
   setNinaAnalysis: (r: NinaAnalysisResult | null) => void
   phd2Analysis: PHD2AnalysisResult | null
   setPhd2Analysis: (r: PHD2AnalysisResult | null) => void
+  sessionAnalysis: SessionAnalysisResult | null
+  setSessionAnalysis: (r: SessionAnalysisResult | null) => void
 
   // NINA analyzer filter state
   ninaSelectedFilters: Set<string>
@@ -124,6 +127,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   // Persisted analysis results
   const [ninaAnalysis, setNinaAnalysis] = useState<NinaAnalysisResult | null>(null)
   const [phd2Analysis, setPhd2Analysis] = useState<PHD2AnalysisResult | null>(null)
+  const [sessionAnalysis, setSessionAnalysis] = useState<SessionAnalysisResult | null>(null)
 
   // NINA analyzer filter state
   const [ninaSelectedFilters, setNinaSelectedFilters] = useState<Set<string>>(new Set())
@@ -244,6 +248,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   setNinaAnalysis,
   phd2Analysis,
   setPhd2Analysis,
+  sessionAnalysis,
+  setSessionAnalysis,
   ninaSelectedFilters,
   setNinaSelectedFilters,
   ninaSelectedHourFilter,
@@ -256,7 +262,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   setPhd2EventFilter,
   phd2ShowAllStarLost,
   setPhd2ShowAllStarLost,
-  }), [mode, backendPath, recurse, frames, rejectionData, applyRejectionFilter, desiredHours, scanning, status, needsRescan, debugEnabledState, scanProgress, colorScheme, colors, ninaAnalysis, phd2Analysis, ninaSelectedFilters, ninaSelectedHourFilter, ninaSelectedTagFilters, phd2ShowAllEvents, phd2EventFilter, phd2ShowAllStarLost])
+  }), [mode, backendPath, recurse, frames, rejectionData, applyRejectionFilter, desiredHours, scanning, status, needsRescan, debugEnabledState, scanProgress, colorScheme, colors, ninaAnalysis, phd2Analysis, sessionAnalysis, ninaSelectedFilters, ninaSelectedHourFilter, ninaSelectedTagFilters, phd2ShowAllEvents, phd2EventFilter, phd2ShowAllStarLost])
 
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>
 }

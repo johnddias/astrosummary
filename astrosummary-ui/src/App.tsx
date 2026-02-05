@@ -5,6 +5,7 @@ import TargetDataVisualizer from './pages/TargetDataVisualizer'
 import NinaAnalyzer from './pages/NinaAnalyzer'
 import PHD2Analyzer from './pages/PHD2Analyzer'
 import RejectionValidation from './pages/RejectionValidation'
+import SessionAnalyzer from './pages/SessionAnalyzer'
 
 export default function App() {
   const { mode, frames, rejectionData } = useApp()
@@ -17,6 +18,7 @@ export default function App() {
   {mode === 'NINA Analyzer' && <NinaAnalyzer />}
   {mode === 'PHD2 Analyzer' && <PHD2Analyzer />}
   {mode === 'Rejection Validation' && <RejectionValidation frames={frames} rejectionData={rejectionData ?? null} />}
+  {mode === 'Session Analyzer' && <SessionAnalyzer />}
   {/* Target Filter Report moved into Target Data Visualizer view */}
       </main>
     </div>

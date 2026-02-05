@@ -3,13 +3,14 @@ import { useMemo, useState, useEffect } from 'react'
 import { useApp } from '../context/AppContext'
 import { totalsByTarget, computeEqualGoal, getRejectionStats } from '../library/analysis'
 import ChartCard from '../components/ChartCard'
+import DirectoryBrowser from '../components/DirectoryBrowser'
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Legend } from 'recharts'
 import { normalizeFilter } from '../library/filters'
 import TargetFilterReport from './TargetFilterReport'
 import RejectionValidation from './RejectionValidation'
 
 export default function TargetDataVisualizer() {
-  const { frames, desiredHours, setDesiredHours, debugEnabled, scanning, rejectionData, applyRejectionFilter, setApplyRejectionFilter } = useApp()
+  const { frames, desiredHours, setDesiredHours, debugEnabled, scanning, rejectionData, applyRejectionFilter, setApplyRejectionFilter, backendPath, setBackendPath, recurse, setRecurse, onScan, status, scanProgress, needsRescan } = useApp()
   const [showValidationDashboard, setShowValidationDashboard] = useState(false)
   // per-filter ratio inputs (defaults to 1.0) - initialized from localStorage when possible
   const [haRatio, setHaRatio] = useState<number>(() => {
@@ -165,6 +166,66 @@ export default function TargetDataVisualizer() {
 
   return (
     <div className="space-y-4">
+      {/* Scan Controls */}
+      <ChartCard title="Load FITS Data">
+        <div className="p-4 space-y-4">
+          {/* Directory Browser */}
+          <DirectoryBrowser
+            onSelect={(path) => setBackendPath(path)}
+            initialPath={backendPath || '/data'}
+          />
+
+          {/* Selected path and scan controls */}
+          <div className="flex flex-wrap items-end gap-4">
+            <div className="flex-1 min-w-[300px]">
+              <label className="text-sm text-text-secondary mb-1 block">Selected path</label>
+              <input
+                className="w-full px-3 py-2 rounded-xl bg-slate-800 border border-slate-700 font-mono text-sm"
+                placeholder="Select a folder above or enter path manually"
+                value={backendPath}
+                onChange={(e) => setBackendPath(e.target.value)}
+              />
+            </div>
+            <div className="flex items-center gap-3">
+              <label className="flex items-center gap-2 text-sm">
+                <input type="checkbox" checked={recurse} onChange={(e) => setRecurse(e.target.checked)} />
+                Recurse subfolders
+              </label>
+              <button
+                className="px-4 py-2 rounded-xl bg-accent-primary text-black font-medium disabled:opacity-60"
+                onClick={onScan}
+                disabled={scanning || !backendPath}
+              >
+                {scanning ? 'Scanning…' : 'Scan'}
+              </button>
+              {needsRescan && !scanning && (
+                <span className="text-sm text-yellow-400">Settings changed - rescan recommended</span>
+              )}
+            </div>
+          </div>
+
+          {/* Scanning progress */}
+          {scanning && (
+            <div>
+              <div className="text-xs text-text-secondary mb-1">{status}</div>
+              <div className="w-full bg-slate-800 rounded-full h-2 overflow-hidden">
+                <div
+                  className="h-2 bg-accent-primary transition-all"
+                  style={{ width: scanProgress.total_files ? `${Math.round((scanProgress.files_scanned / scanProgress.total_files) * 100)}%` : `${Math.min(100, scanProgress.files_scanned * 2)}%` }}
+                />
+              </div>
+            </div>
+          )}
+
+          {/* Results summary */}
+          {!scanning && frames.length > 0 && (
+            <div className="text-sm text-text-secondary">
+              Loaded <span className="text-white font-medium">{frames.length}</span> LIGHT frames
+            </div>
+          )}
+        </div>
+      </ChartCard>
+
       <div className="flex flex-wrap items-start gap-3">
 
         <div className="flex flex-col">
@@ -294,8 +355,8 @@ export default function TargetDataVisualizer() {
         <RejectionValidation frames={frames} rejectionData={rejectionData} />
       )}
 
-      {targets.length === 0 && (
-        <div className="text-text-secondary">No LIGHT frames yet — run Scan from the sidebar.</div>
+      {targets.length === 0 && !scanning && (
+        <div className="text-text-secondary">No LIGHT frames yet — enter a path and click Scan above.</div>
       )}
 
       {/* show the total-hours-by-filter summary only when more than one target exists */}

@@ -588,6 +588,118 @@ class PHD2DebugParser:
 
         return correlations
 
+    def parse_log_content(
+        self,
+        content: str,
+        filename: Optional[str] = None
+    ) -> Tuple[List[SettleEvent], List[DitherCommand], List[StarLostEvent]]:
+        """
+        Parse PHD2 debug log content from a string.
+
+        Args:
+            content: Log file content as string
+            filename: Optional filename to extract date from (e.g., PHD2_DebugLog_2024-01-15_193000.txt)
+
+        Returns:
+            Tuple of (settle_events, dither_commands, star_lost_events)
+        """
+        settle_events: List[SettleEvent] = []
+        dither_commands: List[DitherCommand] = []
+        star_lost_events: List[StarLostEvent] = []
+
+        # Try to extract date from filename if provided
+        self._date_from_filename = False
+        self._last_timestamp = None
+
+        if filename:
+            filename_match = LOG_FILENAME_RE.match(filename)
+            if filename_match:
+                date_str = filename_match.group("date")
+                time_str = filename_match.group("time")
+                self._current_date = datetime.strptime(date_str, "%Y-%m-%d")
+                self._date_from_filename = True
+
+                try:
+                    file_time = datetime.strptime(time_str, "%H%M%S")
+                    self._last_timestamp = self._current_date.replace(
+                        hour=file_time.hour,
+                        minute=file_time.minute,
+                        second=file_time.second
+                    )
+                except ValueError:
+                    pass
+        else:
+            self._current_date = None
+
+        for line in content.splitlines():
+            line = line.strip()
+            if not line:
+                continue
+
+            # Check for "Guiding Begins" to get date context
+            guiding_match = GUIDING_BEGINS_RE.search(line)
+            if guiding_match:
+                if not self._date_from_filename:
+                    date_str = guiding_match.group("date")
+                    self._current_date = datetime.strptime(date_str, "%Y-%m-%d")
+                continue
+
+            # Check for plain text "Star lost" status line
+            star_lost_match = STAR_LOST_RE.match(line)
+            if star_lost_match:
+                time_str = star_lost_match.group("time")
+                reason = star_lost_match.group("reason").strip()
+                timestamp = self._parse_timestamp(time_str, None)
+                if timestamp:
+                    star_lost_events.append(StarLostEvent(
+                        timestamp=timestamp,
+                        reason=reason if reason else "unknown"
+                    ))
+                continue
+
+            # Try to parse JSON event line
+            debug_match = DEBUG_LINE_RE.match(line)
+            if not debug_match:
+                continue
+
+            time_str = debug_match.group("time")
+            json_str = debug_match.group("json")
+
+            try:
+                data = json.loads(json_str)
+            except json.JSONDecodeError:
+                continue
+
+            # Handle different event types
+            if "Event" in data:
+                event_type = data.get("Event")
+                timestamp = self._parse_timestamp(time_str, data)
+
+                if event_type == "SettleDone" and timestamp:
+                    event = self._parse_settle_done(timestamp, data)
+                    if event:
+                        settle_events.append(event)
+
+                elif event_type == "StarLost" and timestamp:
+                    event = self._parse_star_lost(timestamp, data)
+                    if event:
+                        star_lost_events.append(event)
+
+            # Handle dither commands
+            elif data.get("method") == "dither":
+                timestamp = self._parse_timestamp(time_str, data)
+                if timestamp:
+                    cmd = self._parse_dither_command(timestamp, data)
+                    if cmd:
+                        dither_commands.append(cmd)
+
+        # Store for later use
+        self.settle_events = settle_events
+        self.dither_commands = dither_commands
+        self.star_lost_events = star_lost_events
+
+        return settle_events, dither_commands, star_lost_events
+
 
 def parse_phd2_debug_log(log_path: str) -> Dict:
     """
