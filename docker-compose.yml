@@ -30,6 +30,9 @@ services:
       # Note: In the UI, use the container path (e.g., /data/astrophotography/Deep Sky/SFRO Data/Sh-2 132 4 Panel)
     environment:
       - PYTHONUNBUFFERED=1
+      # Root directory for the /browse endpoint. Defaults to /data.
+      # All volume mounts should be under this path.
+      - DATA_ROOT=/data
     restart: unless-stopped
 
   frontend:

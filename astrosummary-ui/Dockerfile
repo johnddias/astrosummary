@@ -22,8 +22,8 @@ RUN npm run build
 # Production stage
 FROM nginx:alpine
 
-# Copy built files from builder
-COPY --from=builder /app/dist /usr/share/nginx/html
+# Copy built files from builder and ensure readable permissions
+COPY --from=builder --chmod=644 /app/dist /usr/share/nginx/html
 
 # Copy nginx configuration (we'll create this)
 COPY nginx.conf /etc/nginx/conf.d/default.conf

@@ -62,32 +62,82 @@ class RejectionLogParser:
         
         return base_name
     
+    def _parse_wbpp_summary(self, content: str) -> Optional[Dict]:
+        """
+        Parse WBPP Frame Selection summary from ProcessLogger.txt.
+
+        WBPP's Frame Selection doesn't log individual rejected filenames.
+        It only provides aggregate counts:
+        - "Frame selection completed: 124 frame(s) rejected out of 500"
+        - FAST INTEGRATION sections with "Group of X Light frames (Y active)"
+        """
+        # Look for Frame Selection summary line
+        summary_match = re.search(
+            r"Frame selection completed:\s*(\d+)\s*frame\(s\)\s*rejected\s*out\s*of\s*(\d+)",
+            content,
+        )
+        if not summary_match:
+            return None
+
+        total_rejected = int(summary_match.group(1))
+        total_frames = int(summary_match.group(2))
+
+        # Parse per-filter integration counts from FAST INTEGRATION blocks
+        per_filter: Dict[str, Dict[str, int]] = {}
+        integration_blocks = re.findall(
+            r"\*+ FAST INTEGRATION \*+\s*\n(.*?)(?=\*{5,}|\Z)",
+            content,
+            re.DOTALL,
+        )
+        for block in integration_blocks:
+            group_match = re.search(
+                r"Group of (\d+) Light frames \((\d+) active\)", block
+            )
+            filter_match = re.search(r"Filter\s*:\s*(\S+)", block)
+            if group_match and filter_match:
+                filter_name = filter_match.group(1)
+                total = int(group_match.group(1))
+                active = int(group_match.group(2))
+                per_filter[filter_name] = {
+                    "total": total,
+                    "active": active,
+                    "rejected": total - active,
+                }
+
+        return {
+            "frame_selection_used": True,
+            "total_rejected": total_rejected,
+            "total_frames": total_frames,
+            "per_filter": per_filter,
+        }
+
     def parse_log(self, log_path: str) -> Dict:
         """
         Parse a ProcessLogger.txt file and extract rejection information.
-        
+
         Returns:
-            Dict with rejected_frames, quality_data, and summary stats
+            Dict with rejected_frames, quality_data, and summary stats.
+            Supports both per-frame rejection logs and WBPP summary-only format.
         """
         log_path = Path(log_path)
         if not log_path.exists():
             raise FileNotFoundError(f"Log file not found: {log_path}")
-        
+
         rejected_frames = set()
         quality_data = {}
         all_frames = set()
-        
+
         try:
             with open(log_path, 'r', encoding='utf-8', errors='ignore') as f:
                 content = f.read()
-                
+
             lines = content.split('\n')
-            
+
             for line in lines:
                 line = line.strip()
                 if not line:
                     continue
-                
+
                 # Check for rejected frames
                 for pattern in self.rejection_patterns:
                     match = re.search(pattern, line, re.IGNORECASE)
@@ -96,21 +146,21 @@ class RejectionLogParser:
                         normalized_name = self._normalize_filename(raw_filename)
                         rejected_frames.add(normalized_name)
                         break
-                
+
                 # Extract quality metrics
                 for pattern in self.quality_patterns:
                     match = re.search(pattern, line, re.IGNORECASE)
                     if match:
                         raw_filename = match.group(1)
                         metric_value = float(match.group(2))
-                        
+
                         # Normalize filename for quality data too
                         filename = self._normalize_filename(raw_filename)
                         all_frames.add(filename)
-                        
+
                         if filename not in quality_data:
                             quality_data[filename] = {}
-                        
+
                         # Determine metric type from line content
                         if 'fwhm' in line.lower():
                             quality_data[filename]['fwhm'] = metric_value
@@ -120,18 +170,35 @@ class RejectionLogParser:
                             quality_data[filename]['quality'] = metric_value
                         elif 'stars' in line.lower():
                             quality_data[filename]['stars'] = int(metric_value)
-        
+
+            # Check for WBPP Frame Selection summary format
+            wbpp_summary = self._parse_wbpp_summary(content)
+
         except Exception as e:
             raise Exception(f"Error parsing log file: {e}")
-        
-        return {
+
+        result = {
             'rejected_frames': list(rejected_frames),
             'quality_data': quality_data,
             'total_frames_mentioned': len(all_frames),
             'rejected_count': len(rejected_frames),
             'acceptance_rate': (len(all_frames) - len(rejected_frames)) / len(all_frames) if all_frames else 1.0,
-            'log_path': str(log_path)
+            'log_path': str(log_path),
         }
+
+        # If WBPP summary found, use its counts and attach the summary
+        if wbpp_summary:
+            result['wbpp_summary'] = wbpp_summary
+            if not rejected_frames:
+                result['rejected_count'] = wbpp_summary['total_rejected']
+                result['total_frames_mentioned'] = wbpp_summary['total_frames']
+                if wbpp_summary['total_frames'] > 0:
+                    result['acceptance_rate'] = (
+                        (wbpp_summary['total_frames'] - wbpp_summary['total_rejected'])
+                        / wbpp_summary['total_frames']
+                    )
+
+        return result
     
     def get_rejected_frame_patterns(self, target_name: str = None, filter_name: str = None) -> Set[str]:
         """

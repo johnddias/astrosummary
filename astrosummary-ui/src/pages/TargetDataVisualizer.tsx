@@ -172,7 +172,7 @@ export default function TargetDataVisualizer() {
           {/* Directory Browser */}
           <DirectoryBrowser
             onSelect={(path) => setBackendPath(path)}
-            initialPath={backendPath || '/data'}
+            initialPath={backendPath || ''}
           />
 
           {/* Selected path and scan controls */}
@@ -301,45 +301,74 @@ export default function TargetDataVisualizer() {
         </div>
 
         {/* Rejection filtering controls */}
-        {/* Debug rejection data */}
         {rejectionData && (
           <div className="flex flex-col">
             <label className="text-xs text-text-secondary">Rejection filter</label>
             <div className="flex flex-col gap-2">
-              <label className="flex items-center gap-2">
-                <input
-                  type="checkbox"
-                  checked={applyRejectionFilter}
-                  onChange={(e) => setApplyRejectionFilter(e.target.checked)}
-                  className="w-4 h-4"
-                />
-                <span className="text-sm">Filter rejected frames</span>
-              </label>
-              <div className="text-xs text-blue-400">
-                Backend rejected count: {rejectionData.rejected_count}
-              </div>
-              <div className="text-xs text-text-secondary">
-                {rejectionStats.rejectedFrames} rejected of {rejectionStats.totalFrames} frames
-                {applyRejectionFilter && (
-                  <div className="text-green-400">
-                    Using {rejectionStats.acceptedFrames} accepted frames
-                  </div>
-                )}
-              </div>
-              {rejectionStats.rejectedFrames > 0 && (
+              {/* WBPP summary-only mode (no individual frame identification) */}
+              {rejectionData.wbpp_summary && rejectionData.rejected_frames.length === 0 ? (
                 <>
-                  <button
-                    onClick={handleExportRejectedFrames}
-                    className="mt-2 px-3 py-1 text-xs bg-blue-600 hover:bg-blue-700 text-white rounded"
-                  >
-                    Export Rejected Frames (CSV)
-                  </button>
+                  <div className="text-xs text-blue-400">
+                    WBPP Frame Selection: {rejectionData.wbpp_summary.total_rejected} rejected out of {rejectionData.wbpp_summary.total_frames}
+                  </div>
+                  {Object.keys(rejectionData.wbpp_summary.per_filter).length > 0 && (
+                    <div className="flex flex-wrap gap-1.5">
+                      {Object.entries(rejectionData.wbpp_summary.per_filter).map(([filter, stats]) => (
+                        <span key={filter} className="px-2 py-0.5 text-xs rounded bg-slate-700 text-text-secondary">
+                          {filter}: {stats.rejected}/{stats.total}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                  <div className="text-xs text-text-secondary">
+                    Individual frame filtering not available from WBPP Frame Selection log
+                  </div>
                   <button
                     onClick={() => setShowValidationDashboard(!showValidationDashboard)}
                     className="mt-2 px-3 py-1 text-xs bg-purple-600 hover:bg-purple-700 text-white rounded"
                   >
                     {showValidationDashboard ? 'Hide' : 'Show'} Validation Dashboard
                   </button>
+                </>
+              ) : (
+                /* Per-frame rejection mode (individual filenames available) */
+                <>
+                  <label className="flex items-center gap-2">
+                    <input
+                      type="checkbox"
+                      checked={applyRejectionFilter}
+                      onChange={(e) => setApplyRejectionFilter(e.target.checked)}
+                      className="w-4 h-4"
+                    />
+                    <span className="text-sm">Filter rejected frames</span>
+                  </label>
+                  <div className="text-xs text-blue-400">
+                    Backend rejected count: {rejectionData.rejected_count}
+                  </div>
+                  <div className="text-xs text-text-secondary">
+                    {rejectionStats.rejectedFrames} rejected of {rejectionStats.totalFrames} frames
+                    {applyRejectionFilter && (
+                      <div className="text-green-400">
+                        Using {rejectionStats.acceptedFrames} accepted frames
+                      </div>
+                    )}
+                  </div>
+                  {rejectionStats.rejectedFrames > 0 && (
+                    <>
+                      <button
+                        onClick={handleExportRejectedFrames}
+                        className="mt-2 px-3 py-1 text-xs bg-blue-600 hover:bg-blue-700 text-white rounded"
+                      >
+                        Export Rejected Frames (CSV)
+                      </button>
+                      <button
+                        onClick={() => setShowValidationDashboard(!showValidationDashboard)}
+                        className="mt-2 px-3 py-1 text-xs bg-purple-600 hover:bg-purple-700 text-white rounded"
+                      >
+                        {showValidationDashboard ? 'Hide' : 'Show'} Validation Dashboard
+                      </button>
+                    </>
+                  )}
                 </>
               )}
             </div>

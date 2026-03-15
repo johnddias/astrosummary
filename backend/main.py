@@ -16,6 +16,13 @@ import io
 from datetime import datetime
 
 import logging
+import os
+
+
+# Configurable data root for the /browse endpoint.
+# Set DATA_ROOT env var to the top-level directory containing your astrophotography data.
+# Defaults to "/data" (Docker mount) when not set.
+DATA_ROOT = Path(os.environ.get("DATA_ROOT", "/data")).resolve()
 
 
 # module logger - create early so import-time issues can be logged
@@ -152,22 +159,25 @@ def scan_stream(req: ScanRequest):
 
 
 @app.get('/browse')
-def browse_directory(path: str = "/data"):
+def browse_directory(path: str = ""):
     """
     List directories and FITS files in the given path.
-    Restricted to paths under /data for security.
+    Restricted to paths under DATA_ROOT for security.
     """
-    from typing import List
-    import os
 
-    # Security: ensure path is under /data
+    # Default to DATA_ROOT when no path provided
+    if not path:
+        path = str(DATA_ROOT)
+
+    # Security: ensure path is under DATA_ROOT
     try:
         resolved = Path(path).resolve()
-        data_root = Path("/data").resolve()
 
-        # Check if path is under /data
-        if not str(resolved).startswith(str(data_root)):
-            raise HTTPException(status_code=403, detail="Access denied: path must be under /data")
+        if not str(resolved).startswith(str(DATA_ROOT)):
+            raise HTTPException(
+                status_code=403,
+                detail=f"Access denied: path must be under {DATA_ROOT}",
+            )
     except Exception as e:
         if isinstance(e, HTTPException):
             raise
@@ -210,7 +220,7 @@ def browse_directory(path: str = "/data"):
 
     return {
         "path": str(resolved),
-        "parent": str(resolved.parent) if resolved != data_root else None,
+        "parent": str(resolved.parent) if resolved != DATA_ROOT else None,
         "entries": entries
     }
 

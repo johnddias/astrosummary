@@ -213,22 +213,31 @@ def _parse_rejection_logs(log_paths: List[str]) -> Optional[Dict]:
 
         all_rejected_frames = set()
         all_quality_data = {}
+        wbpp_summary = None
+        total_rejected_count = 0
 
         for log_path in log_paths:
             try:
                 result = parse_rejection_log(log_path)
                 all_rejected_frames.update(result.get('rejected_frames', []))
                 all_quality_data.update(result.get('quality_data', {}))
+                if result.get('wbpp_summary'):
+                    wbpp_summary = result['wbpp_summary']
+                    total_rejected_count = result.get('rejected_count', 0)
             except Exception:
                 continue  # Skip problematic logs
 
-        if all_rejected_frames:
-            return {
+        # Return data if we have individual frames OR WBPP summary stats
+        if all_rejected_frames or wbpp_summary:
+            data = {
                 'rejected_frames': list(all_rejected_frames),
                 'quality_data': all_quality_data,
                 'rejection_logs': log_paths,
-                'rejected_count': len(all_rejected_frames)
+                'rejected_count': len(all_rejected_frames) if all_rejected_frames else total_rejected_count,
             }
+            if wbpp_summary:
+                data['wbpp_summary'] = wbpp_summary
+            return data
     except ImportError:
         pass  # Parser not available
 

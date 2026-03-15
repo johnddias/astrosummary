@@ -137,6 +137,52 @@ def _check_rms_event_during_frame(
     return False
 
 
+def _in_time_range(
+    ts_str: str, bounds: Tuple[datetime, datetime]
+) -> bool:
+    """Check if a timestamp string falls within the given time bounds (inclusive)."""
+    ts = _parse_iso_timestamp(ts_str)
+    return ts is not None and bounds[0] <= ts <= bounds[1]
+
+
+def _compute_session_bounds(
+    nina_analysis: Optional[Dict[str, Any]],
+    phd2_settle_events: List["PHD2SettleEvent"],
+) -> Optional[Tuple[datetime, datetime]]:
+    """Compute session time bounds from NINA log or PHD2 events.
+
+    Priority: NINA log segments > PHD2 settle events.
+    Returns None if no log data is available.
+    """
+    # Try NINA log segments first
+    if nina_analysis:
+        segments = nina_analysis.get("segments", [])
+        if segments:
+            seg_starts = []
+            seg_ends = []
+            for seg in segments:
+                s = _parse_iso_timestamp(seg.get("start", ""))
+                e = _parse_iso_timestamp(seg.get("end", ""))
+                if s:
+                    seg_starts.append(s)
+                if e:
+                    seg_ends.append(e)
+            if seg_starts and seg_ends:
+                return (min(seg_starts), max(seg_ends))
+
+    # Fall back to PHD2 settle events
+    if phd2_settle_events:
+        timestamps = []
+        for event in phd2_settle_events:
+            ts = _parse_iso_timestamp(event.timestamp)
+            if ts:
+                timestamps.append(ts)
+        if timestamps:
+            return (min(timestamps), max(timestamps))
+
+    return None
+
+
 def _build_weather_lookup(
     weather_data: List[WeatherDataRecord],
 ) -> Dict[str, WeatherDataRecord]:
@@ -340,13 +386,20 @@ def build_timelines(
     correlated_frames: List[CorrelatedFrame],
     image_metadata: List[ImageMetaDataRecord],
     weather_data: List[WeatherDataRecord],
+    session_bounds: Optional[Tuple[datetime, datetime]] = None,
 ) -> Dict[str, List[Dict[str, Any]]]:
-    """Build time-series data for charts."""
+    """Build time-series data for charts.
+
+    If session_bounds is provided, only include data points within that range.
+    This ensures charts align with the NINA/PHD2 logged session period.
+    """
 
     # HFR timeline
     hfr_timeline = []
     for frame in correlated_frames:
         if frame.hfr is not None:
+            if session_bounds and not _in_time_range(frame.timestamp_utc, session_bounds):
+                continue
             hfr_timeline.append(
                 {
                     "timestamp": frame.timestamp_utc,
@@ -356,18 +409,20 @@ def build_timelines(
                 }
             )
 
-    # Weather timeline
+    # Weather timeline - use weather_data directly for continuous readings
     weather_timeline = []
-    for frame in correlated_frames:
-        if frame.temperature is not None or frame.humidity is not None:
+    for w in weather_data:
+        if w.temperature is not None or w.humidity is not None:
+            if session_bounds and not _in_time_range(w.exposure_start_utc, session_bounds):
+                continue
             weather_timeline.append(
                 {
-                    "timestamp": frame.timestamp_utc,
-                    "temperature": frame.temperature,
-                    "humidity": frame.humidity,
-                    "wind_speed": frame.wind_speed,
-                    "dew_point": frame.dew_point,
-                    "sky_temp": frame.sky_temperature,
+                    "timestamp": w.exposure_start_utc,
+                    "temperature": w.temperature,
+                    "humidity": w.humidity,
+                    "wind_speed": w.wind_speed,
+                    "dew_point": w.dew_point,
+                    "sky_temp": w.sky_temperature,
                 }
             )
 
@@ -375,10 +430,12 @@ def build_timelines(
     focus_timeline = []
     for frame in correlated_frames:
         if frame.focuser_position is not None:
+            if session_bounds and not _in_time_range(frame.timestamp_utc, session_bounds):
+                continue
             focus_timeline.append(
                 {
                     "timestamp": frame.timestamp_utc,
-                    "position": frame.focuser_position,
+                    "focuser_position": frame.focuser_position,
                     "focuser_temp": frame.focuser_temp,
                 }
             )
@@ -387,10 +444,12 @@ def build_timelines(
     guiding_timeline = []
     for img in image_metadata:
         if img.guiding_rms_arcsec is not None and img.guiding_rms_arcsec > 0:
+            if session_bounds and not _in_time_range(img.exposure_start_utc, session_bounds):
+                continue
             guiding_timeline.append(
                 {
                     "timestamp": img.exposure_start_utc,
-                    "rms_total": round(img.guiding_rms_arcsec, 2) if img.guiding_rms_arcsec else None,
+                    "guiding_rms_arcsec": round(img.guiding_rms_arcsec, 2) if img.guiding_rms_arcsec else None,
                     "rms_ra": round(img.guiding_rms_ra_arcsec, 2) if img.guiding_rms_ra_arcsec else None,
                     "rms_dec": round(img.guiding_rms_dec_arcsec, 2) if img.guiding_rms_dec_arcsec else None,
                 }
@@ -507,11 +566,15 @@ def analyze_unified_session(
             correlated_frames=correlated_frames,
         )
 
-        # Build timelines
+        # Compute session bounds from log data to scope charts
+        session_bounds = _compute_session_bounds(nina_analysis, phd2_settle_events)
+
+        # Build timelines (filtered to session bounds if available)
         timelines = build_timelines(
             correlated_frames=correlated_frames,
             image_metadata=image_metadata,
             weather_data=weather_data,
+            session_bounds=session_bounds,
         )
 
         return UnifiedSessionAnalyzeResponse(

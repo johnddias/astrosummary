@@ -20,8 +20,9 @@ interface DirectoryBrowserProps {
   initialPath?: string
 }
 
-export default function DirectoryBrowser({ onSelect, initialPath = '/data' }: DirectoryBrowserProps) {
+export default function DirectoryBrowser({ onSelect, initialPath = '' }: DirectoryBrowserProps) {
   const [currentPath, setCurrentPath] = useState(initialPath)
+  const [rootPath, setRootPath] = useState('')
   const [entries, setEntries] = useState<DirectoryEntry[]>([])
   const [parentPath, setParentPath] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
@@ -36,14 +37,29 @@ export default function DirectoryBrowser({ onSelect, initialPath = '/data' }: Di
     setLoading(true)
     setError(null)
     try {
-      const res = await fetch(`${API_URL}/browse?path=${encodeURIComponent(path)}`)
+      const url = path
+        ? `${API_URL}/browse?path=${encodeURIComponent(path)}`
+        : `${API_URL}/browse`
+      const res = await fetch(url)
       if (!res.ok) {
+        // If a saved path is invalid (e.g. Windows path in Docker), fall back to server default
+        if (path && (res.status === 403 || res.status === 404)) {
+          setCurrentPath('')
+          return
+        }
         const text = await res.text()
         throw new Error(text || `HTTP ${res.status}`)
       }
       const data: BrowseResponse = await res.json()
       setEntries(data.entries)
       setParentPath(data.parent)
+      // Track the current path returned by the backend (handles default root)
+      if ((!currentPath || currentPath !== data.path) && !path) {
+        setCurrentPath(data.path)
+      }
+      if (!rootPath && !data.parent) {
+        setRootPath(data.path)
+      }
     } catch (e: any) {
       setError(e.message || 'Failed to load directory')
       setEntries([])
@@ -72,9 +88,9 @@ export default function DirectoryBrowser({ onSelect, initialPath = '/data' }: Di
       >
         <div className="flex items-center gap-2">
           <span className="text-text-secondary">{expanded ? '▼' : '▶'}</span>
-          <span className="text-sm font-medium">Browse /data</span>
+          <span className="text-sm font-medium">Browse {rootPath || currentPath}</span>
         </div>
-        {!expanded && currentPath !== '/data' && (
+        {!expanded && currentPath !== rootPath && (
           <span className="text-xs text-text-secondary truncate max-w-[200px]">{currentPath}</span>
         )}
       </div>

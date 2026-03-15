@@ -10,12 +10,28 @@ export type LightFrame = {
 	[key: string]: any;
 };
 
+// WBPP Frame Selection per-filter stats
+export interface WbppFilterStats {
+	total: number;
+	active: number;
+	rejected: number;
+}
+
+// WBPP Frame Selection summary (no individual frame identification)
+export interface WbppSummary {
+	frame_selection_used: boolean;
+	total_rejected: number;
+	total_frames: number;
+	per_filter: Record<string, WbppFilterStats>;
+}
+
 // Type for rejection data from ProcessLogger.txt
 export interface RejectionData {
 	rejected_frames: string[];
 	quality_data: Record<string, any>;
 	rejection_logs: string[];
 	rejected_count: number;
+	wbpp_summary?: WbppSummary;
 }
 
 // Type for scan response including rejection data
