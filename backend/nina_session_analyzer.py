@@ -431,6 +431,8 @@ def parse_nina_log(
             "productive_seconds": 0.0,
             "idle_seconds": 0.0,
             "segments": [],
+            "log_start": None,
+            "log_end": None,
             "lines_total": lines_total,
             "lines_matched": lines_matched,
             "lines_skipped_ts": lines_skipped_ts,
@@ -665,6 +667,11 @@ def parse_nina_log(
                 "meta": s.meta
             } for s in segments
         ],
+        # Full timestamp span of every parsed log line (not just categorized
+        # segments) - used to detect the log's actual session window even
+        # when the first/last lines don't fall into a recognized segment type.
+        "log_start": min(ts for ts, _ in events).isoformat(),
+        "log_end": max(ts for ts, _ in events).isoformat(),
         "lines_total": lines_total,
         "lines_matched": lines_matched,
         "lines_skipped_ts": lines_skipped_ts,

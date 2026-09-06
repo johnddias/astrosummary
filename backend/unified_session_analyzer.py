@@ -35,6 +35,16 @@ from phd2_debug_parser import (
 
 logger = logging.getLogger("backend.unified_session_analyzer")
 
+# NINA and PHD2 logs are compared by whether their overall active time ranges
+# overlap (with this buffer), not by how close their first events are: PHD2
+# is often left running well before the first "guide" command actually fires
+# (camera cooling, twilight/dark wait, focus routines can all take an hour or
+# more), so comparing earliest timestamps produces false positives on
+# perfectly matched same-night logs. Two logs from genuinely different nights
+# won't overlap at all, so this buffer only needs to absorb normal startup
+# slop, not bridge unrelated sessions.
+SESSION_OVERLAP_BUFFER_MINUTES = 20
+
 
 def _parse_iso_timestamp(ts_str: str) -> Optional[datetime]:
     """Parse ISO timestamp string to datetime."""
@@ -151,24 +161,16 @@ def _compute_session_bounds(
 ) -> Optional[Tuple[datetime, datetime]]:
     """Compute session time bounds from NINA log or PHD2 events.
 
-    Priority: NINA log segments > PHD2 settle events.
+    Priority: NINA log's full timestamp span > PHD2 settle events.
     Returns None if no log data is available.
     """
-    # Try NINA log segments first
+    # Try the NINA log's full timestamp span first (covers the whole night,
+    # not just lines that fell into a categorized segment).
     if nina_analysis:
-        segments = nina_analysis.get("segments", [])
-        if segments:
-            seg_starts = []
-            seg_ends = []
-            for seg in segments:
-                s = _parse_iso_timestamp(seg.get("start", ""))
-                e = _parse_iso_timestamp(seg.get("end", ""))
-                if s:
-                    seg_starts.append(s)
-                if e:
-                    seg_ends.append(e)
-            if seg_starts and seg_ends:
-                return (min(seg_starts), max(seg_ends))
+        log_start = _parse_iso_timestamp(nina_analysis.get("log_start", ""))
+        log_end = _parse_iso_timestamp(nina_analysis.get("log_end", ""))
+        if log_start and log_end:
+            return (log_start, log_end)
 
     # Fall back to PHD2 settle events
     if phd2_settle_events:
@@ -181,6 +183,46 @@ def _compute_session_bounds(
             return (min(timestamps), max(timestamps))
 
     return None
+
+
+def _nina_time_range(nina_analysis: Optional[Dict[str, Any]]) -> Optional[Tuple[datetime, datetime]]:
+    """Full active time range of a parsed NINA log (its first to last logged line)."""
+    if not nina_analysis:
+        return None
+    start = _parse_iso_timestamp(nina_analysis.get("log_start", ""))
+    end = _parse_iso_timestamp(nina_analysis.get("log_end", ""))
+    return (start, end) if start and end else None
+
+
+def _phd2_time_range(
+    guiding_begins_at: Optional[datetime],
+    settle_events: List[Any],
+    dither_commands: List[Any],
+    star_lost_events: List[Any],
+) -> Optional[Tuple[datetime, datetime]]:
+    """Full active time range of a parsed PHD2 debug log.
+
+    PHD2 is often left running for hours before guiding actually starts (or
+    across multiple sessions in one debug log), so this spans every
+    settle/dither/star-lost event plus the "Guiding Begins at ..." line when
+    present, rather than trying to pin down a single "start" instant.
+    """
+    timestamps = [
+        e.timestamp for e in (*settle_events, *dither_commands, *star_lost_events)
+        if getattr(e, "timestamp", None)
+    ]
+    if guiding_begins_at:
+        timestamps.append(guiding_begins_at)
+    return (min(timestamps), max(timestamps)) if timestamps else None
+
+
+def _ranges_overlap(
+    a: Tuple[datetime, datetime],
+    b: Tuple[datetime, datetime],
+    buffer_minutes: float,
+) -> bool:
+    buf = timedelta(minutes=buffer_minutes)
+    return a[0] - buf <= b[1] and b[0] - buf <= a[1]
 
 
 def _build_weather_lookup(
@@ -467,6 +509,7 @@ def analyze_unified_session(
     nina_log_content: Optional[str] = None,
     phd2_debug_log_content: Optional[str] = None,
     session_metadata: Optional[SessionMetadataResponse] = None,
+    phd2_debug_filename: Optional[str] = None,
 ) -> UnifiedSessionAnalyzeResponse:
     """
     Perform unified session analysis combining multiple data sources.
@@ -475,6 +518,8 @@ def analyze_unified_session(
         nina_log_content: Content of NINA log file
         phd2_debug_log_content: Content of PHD2 debug log file
         session_metadata: Parsed Session Metadata (from directory or uploads)
+        phd2_debug_filename: Original filename of the PHD2 debug log, used to
+            seed its session date (see PHD2DebugParser.parse_log_content)
 
     Returns:
         UnifiedSessionAnalyzeResponse with correlated analysis
@@ -488,11 +533,15 @@ def analyze_unified_session(
         # Parse PHD2 debug log if provided
         phd2_statistics = None
         phd2_settle_events: List[PHD2SettleEvent] = []
+        phd2_range: Optional[Tuple[datetime, datetime]] = None
 
         if phd2_debug_log_content:
             parser = PHD2DebugParser()
             settle_events, dither_commands, star_lost = parser.parse_log_content(
-                phd2_debug_log_content
+                phd2_debug_log_content, filename=phd2_debug_filename
+            )
+            phd2_range = _phd2_time_range(
+                parser.guiding_begins_at, settle_events, dither_commands, star_lost
             )
 
             # Convert to model objects
@@ -544,10 +593,45 @@ def analyze_unified_session(
                     failure_reasons=dict(failure_reasons),
                 )
 
+        # Validate NINA and PHD2 logs are from the same imaging session before
+        # correlating anything. Comparing raw content timestamps (rather than
+        # filenames) works regardless of how each file was named.
+        nina_range = _nina_time_range(nina_analysis)
+        if nina_range and phd2_range:
+            if not _ranges_overlap(nina_range, phd2_range, SESSION_OVERLAP_BUFFER_MINUTES):
+                logger.warning(
+                    "Session mismatch: NINA active %s to %s, PHD2 active %s to %s",
+                    nina_range[0].isoformat(), nina_range[1].isoformat(),
+                    phd2_range[0].isoformat(), phd2_range[1].isoformat(),
+                )
+                return UnifiedSessionAnalyzeResponse(
+                    success=False,
+                    error=(
+                        "PHD2 and NINA logs are from different sessions. "
+                        "Please load logs from the same imaging session."
+                    ),
+                )
+
         # Extract session metadata components
         acquisition_details = session_metadata.acquisition_details if session_metadata else None
         image_metadata = session_metadata.image_metadata if session_metadata else []
         weather_data = session_metadata.weather_data if session_metadata else []
+
+        # Scope session metadata to the log-derived session window. Session
+        # Metadata Plugin files (AcquisitionDetails/ImageMetaData/WeatherData)
+        # accumulate across many nights, so without this, a single night's
+        # NINA/PHD2 logs would get correlated against months of unrelated
+        # historical frames and weather readings.
+        session_bounds = _compute_session_bounds(nina_analysis, phd2_settle_events)
+        if session_bounds:
+            image_metadata = [
+                img for img in image_metadata
+                if _in_time_range(img.exposure_start_utc, session_bounds)
+            ]
+            weather_data = [
+                w for w in weather_data
+                if _in_time_range(w.exposure_start_utc, session_bounds)
+            ]
 
         # Correlate frames
         correlated_frames = correlate_frames(
@@ -565,9 +649,6 @@ def analyze_unified_session(
             phd2_statistics=phd2_statistics,
             correlated_frames=correlated_frames,
         )
-
-        # Compute session bounds from log data to scope charts
-        session_bounds = _compute_session_bounds(nina_analysis, phd2_settle_events)
 
         # Build timelines (filtered to session bounds if available)
         timelines = build_timelines(

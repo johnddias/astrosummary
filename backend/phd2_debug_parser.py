@@ -151,6 +151,9 @@ class PHD2DebugParser:
         self.settle_progress: List[SettleProgress] = []
         self.star_lost_events: List[StarLostEvent] = []
         self._current_date: Optional[datetime] = None
+        # Full timestamp of the "Guiding Begins at ..." line, if present -
+        # the closest equivalent to "session start" in a PHD2 debug log.
+        self.guiding_begins_at: Optional[datetime] = None
 
     def parse_log_directory(self, log_dir: str) -> SettleStatistics:
         """
@@ -236,6 +239,7 @@ class PHD2DebugParser:
         filename_match = LOG_FILENAME_RE.match(log_file.name)
         self._date_from_filename = False
         self._last_timestamp = None
+        self.guiding_begins_at = None
 
         if filename_match:
             date_str = filename_match.group("date")
@@ -273,6 +277,11 @@ class PHD2DebugParser:
                         if not self._date_from_filename:
                             date_str = guiding_match.group("date")
                             self._current_date = datetime.strptime(date_str, "%Y-%m-%d")
+                        if self.guiding_begins_at is None:
+                            self.guiding_begins_at = datetime.strptime(
+                                f"{guiding_match.group('date')} {guiding_match.group('time')}",
+                                "%Y-%m-%d %H:%M:%S",
+                            )
                         continue
 
                     # Check for plain text "Star lost" status line
@@ -610,6 +619,7 @@ class PHD2DebugParser:
         # Try to extract date from filename if provided
         self._date_from_filename = False
         self._last_timestamp = None
+        self.guiding_begins_at = None
 
         if filename:
             filename_match = LOG_FILENAME_RE.match(filename)
@@ -642,6 +652,11 @@ class PHD2DebugParser:
                 if not self._date_from_filename:
                     date_str = guiding_match.group("date")
                     self._current_date = datetime.strptime(date_str, "%Y-%m-%d")
+                if self.guiding_begins_at is None:
+                    self.guiding_begins_at = datetime.strptime(
+                        f"{guiding_match.group('date')} {guiding_match.group('time')}",
+                        "%Y-%m-%d %H:%M:%S",
+                    )
                 continue
 
             # Check for plain text "Star lost" status line

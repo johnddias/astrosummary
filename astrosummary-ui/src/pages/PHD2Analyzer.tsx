@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import ChartCard from '../components/ChartCard'
 import CollapsibleSection from '../components/CollapsibleSection'
+import StickyFileField from '../components/StickyFileField'
 import { API_URL } from '../lib/apiConfig'
 import { useApp } from '../context/AppContext'
 
@@ -124,10 +125,12 @@ export default function PHD2Analyzer() {
             <p className="text-sm text-text-secondary mb-2">
               Upload a PHD2 Debug Log file (PHD2_DebugLog_*.txt) to analyze settling performance.
             </p>
-            <input
-              type="file"
+            <StickyFileField
+              storageKey="phd2_analyzer.debug_log"
+              label="PHD2 Debug Log"
+              fileExtensions={['txt']}
               accept=".txt"
-              onChange={(e) => setFile(e.target.files ? e.target.files[0] : null)}
+              onFileChange={setFile}
             />
             <div className="mt-2">
               <button

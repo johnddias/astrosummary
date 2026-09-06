@@ -1,6 +1,7 @@
 import { useState, useMemo } from 'react'
 import ChartCard from '../components/ChartCard'
 import CollapsibleSection from '../components/CollapsibleSection'
+import StickyFileField from '../components/StickyFileField'
 import { API_URL } from '../lib/apiConfig'
 import { useApp } from '../context/AppContext'
 import {
@@ -141,66 +142,41 @@ export default function SessionAnalyzer() {
       <ChartCard title="Session Analyzer - Unified Analysis">
         <div className="p-4">
           <div className="grid grid-cols-2 gap-4 mb-4">
-            <div>
-              <label className="block text-sm font-medium text-text-secondary mb-1">NINA Log</label>
-              <input
-                type="file"
-                accept="text/*"
-                onChange={(e) => handleFileChange('nina_log', e.target.files?.[0] || null)}
-                className="text-sm"
-              />
-              {files.find(f => f.type === 'nina_log') && (
-                <span className="ml-2 text-xs text-green-400">Selected</span>
-              )}
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-text-secondary mb-1">PHD2 Debug Log</label>
-              <input
-                type="file"
-                accept="text/*"
-                onChange={(e) => handleFileChange('phd2_debug', e.target.files?.[0] || null)}
-                className="text-sm"
-              />
-              {files.find(f => f.type === 'phd2_debug') && (
-                <span className="ml-2 text-xs text-green-400">Selected</span>
-              )}
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-text-secondary mb-1">Acquisition Details (JSON/CSV)</label>
-              <input
-                type="file"
-                accept=".json,.csv"
-                onChange={(e) => handleFileChange('acquisition_details', e.target.files?.[0] || null)}
-                className="text-sm"
-              />
-              {files.find(f => f.type === 'acquisition_details') && (
-                <span className="ml-2 text-xs text-green-400">Selected</span>
-              )}
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-text-secondary mb-1">Image Metadata (JSON/CSV)</label>
-              <input
-                type="file"
-                accept=".json,.csv"
-                onChange={(e) => handleFileChange('image_metadata', e.target.files?.[0] || null)}
-                className="text-sm"
-              />
-              {files.find(f => f.type === 'image_metadata') && (
-                <span className="ml-2 text-xs text-green-400">Selected</span>
-              )}
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-text-secondary mb-1">Weather Data (JSON/CSV)</label>
-              <input
-                type="file"
-                accept=".json,.csv"
-                onChange={(e) => handleFileChange('weather_data', e.target.files?.[0] || null)}
-                className="text-sm"
-              />
-              {files.find(f => f.type === 'weather_data') && (
-                <span className="ml-2 text-xs text-green-400">Selected</span>
-              )}
-            </div>
+            <StickyFileField
+              storageKey="session_analyzer.nina_log"
+              label="NINA Log"
+              fileExtensions={['log', 'txt']}
+              accept="text/*"
+              onFileChange={(file) => handleFileChange('nina_log', file)}
+            />
+            <StickyFileField
+              storageKey="session_analyzer.phd2_debug_log"
+              label="PHD2 Debug Log"
+              fileExtensions={['txt']}
+              accept="text/*"
+              onFileChange={(file) => handleFileChange('phd2_debug', file)}
+            />
+            <StickyFileField
+              storageKey="session_analyzer.acquisition_details"
+              label="Acquisition Details (JSON/CSV)"
+              fileExtensions={['json', 'csv']}
+              accept=".json,.csv"
+              onFileChange={(file) => handleFileChange('acquisition_details', file)}
+            />
+            <StickyFileField
+              storageKey="session_analyzer.image_metadata"
+              label="Image Metadata (JSON/CSV)"
+              fileExtensions={['json', 'csv']}
+              accept=".json,.csv"
+              onFileChange={(file) => handleFileChange('image_metadata', file)}
+            />
+            <StickyFileField
+              storageKey="session_analyzer.weather_data"
+              label="Weather Data (JSON/CSV)"
+              fileExtensions={['json', 'csv']}
+              accept=".json,.csv"
+              onFileChange={(file) => handleFileChange('weather_data', file)}
+            />
           </div>
 
           <div className="flex gap-2">

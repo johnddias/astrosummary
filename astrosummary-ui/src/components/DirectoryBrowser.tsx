@@ -18,9 +18,16 @@ interface BrowseResponse {
 interface DirectoryBrowserProps {
   onSelect: (path: string) => void
   initialPath?: string
+  /**
+   * 'folder' (default): browse to and select a directory (used for FITS scanning).
+   * 'file': browse into directories and select an individual file matching `fileExtensions`.
+   */
+  mode?: 'folder' | 'file'
+  /** File extensions (without the dot) to list when mode='file', e.g. ['txt']. */
+  fileExtensions?: string[]
 }
 
-export default function DirectoryBrowser({ onSelect, initialPath = '' }: DirectoryBrowserProps) {
+export default function DirectoryBrowser({ onSelect, initialPath = '', mode = 'folder', fileExtensions }: DirectoryBrowserProps) {
   const [currentPath, setCurrentPath] = useState(initialPath)
   const [rootPath, setRootPath] = useState('')
   const [entries, setEntries] = useState<DirectoryEntry[]>([])
@@ -31,15 +38,20 @@ export default function DirectoryBrowser({ onSelect, initialPath = '' }: Directo
 
   useEffect(() => {
     loadDirectory(currentPath)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentPath])
 
   async function loadDirectory(path: string) {
     setLoading(true)
     setError(null)
     try {
-      const url = path
-        ? `${API_URL}/browse?path=${encodeURIComponent(path)}`
-        : `${API_URL}/browse`
+      const params = new URLSearchParams()
+      if (path) params.set('path', path)
+      if (mode === 'file' && fileExtensions && fileExtensions.length > 0) {
+        params.set('extensions', fileExtensions.join(','))
+      }
+      const qs = params.toString()
+      const url = qs ? `${API_URL}/browse?${qs}` : `${API_URL}/browse`
       const res = await fetch(url)
       if (!res.ok) {
         // If a saved path is invalid (e.g. Windows path in Docker), fall back to server default
@@ -77,7 +89,7 @@ export default function DirectoryBrowser({ onSelect, initialPath = '' }: Directo
   }
 
   const directories = entries.filter(e => e.type === 'directory')
-  const fitsFiles = entries.filter(e => e.type === 'file')
+  const files = entries.filter(e => e.type === 'file')
 
   return (
     <div className="border border-slate-700 rounded-xl bg-slate-900 overflow-hidden">
@@ -103,12 +115,14 @@ export default function DirectoryBrowser({ onSelect, initialPath = '' }: Directo
             <span className="text-blue-400 font-mono text-xs bg-slate-800 px-2 py-1 rounded">
               {currentPath}
             </span>
-            <button
-              onClick={() => handleSelect(currentPath)}
-              className="ml-auto px-3 py-1 text-xs bg-accent-primary text-black rounded font-medium hover:bg-green-400"
-            >
-              Select This Folder
-            </button>
+            {mode === 'folder' && (
+              <button
+                onClick={() => handleSelect(currentPath)}
+                className="ml-auto px-3 py-1 text-xs bg-accent-primary text-black rounded font-medium hover:bg-green-400"
+              >
+                Select This Folder
+              </button>
+            )}
           </div>
 
           {/* Navigation */}
@@ -158,16 +172,46 @@ export default function DirectoryBrowser({ onSelect, initialPath = '' }: Directo
                 </div>
               ))}
 
-              {/* FITS files summary */}
-              {fitsFiles.length > 0 && (
+              {/* Selectable files (mode='file') */}
+              {mode === 'file' && files.length > 0 && (
+                <div className="mt-1 pt-1 border-t border-slate-700">
+                  {files.map(entry => (
+                    <div
+                      key={entry.path}
+                      className="flex items-center gap-2 px-3 py-2 rounded hover:bg-slate-800 cursor-pointer group"
+                      onClick={() => handleSelect(entry.path)}
+                    >
+                      <span className="text-blue-400">📄</span>
+                      <span className="flex-1 text-sm truncate">{entry.name}</span>
+                      {entry.size !== undefined && (
+                        <span className="text-xs text-text-secondary">
+                          {(entry.size / 1024).toFixed(1)} KB
+                        </span>
+                      )}
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          handleSelect(entry.path)
+                        }}
+                        className="opacity-0 group-hover:opacity-100 px-2 py-0.5 text-xs bg-slate-700 hover:bg-slate-600 rounded"
+                      >
+                        Select
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {/* FITS files summary (mode='folder') */}
+              {mode === 'folder' && files.length > 0 && (
                 <div className="mt-2 pt-2 border-t border-slate-700">
                   <div className="text-xs text-text-secondary px-3 py-1">
-                    {fitsFiles.length} FITS file{fitsFiles.length !== 1 ? 's' : ''} in this directory
+                    {files.length} FITS file{files.length !== 1 ? 's' : ''} in this directory
                   </div>
                 </div>
               )}
 
-              {directories.length === 0 && fitsFiles.length === 0 && (
+              {directories.length === 0 && files.length === 0 && (
                 <div className="text-text-secondary text-sm py-4 text-center">
                   Empty directory
                 </div>

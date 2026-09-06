@@ -1,6 +1,7 @@
 import { useState, useMemo } from 'react'
 import ChartCard from '../components/ChartCard'
 import CollapsibleSection from '../components/CollapsibleSection'
+import StickyFileField from '../components/StickyFileField'
 import { API_URL } from '../lib/apiConfig'
 import { useApp } from '../context/AppContext'
 import { ScatterChart, Scatter, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine } from 'recharts'
@@ -236,7 +237,13 @@ export default function NinaAnalyzer() {
     <div className="space-y-4">
       <ChartCard title="NINA Session Analyzer">
         <div className="p-4">
-          <input type="file" accept="text/*" onChange={(e) => setFile(e.target.files ? e.target.files[0] : null)} />
+          <StickyFileField
+            storageKey="nina_analyzer.log"
+            label="NINA Log"
+            fileExtensions={['log', 'txt']}
+            accept="text/*"
+            onFileChange={setFile}
+          />
           <div className="mt-2">
             <button className="px-3 py-2 rounded bg-accent-primary text-black" onClick={submit} disabled={!file || loading}>{loading ? 'Analyzing\u2026' : 'Analyze'}</button>
           </div>

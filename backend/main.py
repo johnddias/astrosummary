@@ -159,15 +159,26 @@ def scan_stream(req: ScanRequest):
 
 
 @app.get('/browse')
-def browse_directory(path: str = ""):
+def browse_directory(path: str = "", extensions: str = ""):
     """
-    List directories and FITS files in the given path.
+    List directories and files in the given path.
     Restricted to paths under DATA_ROOT for security.
+
+    By default only FITS files are surfaced (for the FITS data scanner). Pass
+    `extensions` as a comma-separated list (e.g. "txt,log,json,csv") to list
+    other file types instead - used by the log/metadata file pickers.
     """
 
     # Default to DATA_ROOT when no path provided
     if not path:
         path = str(DATA_ROOT)
+
+    if extensions:
+        allowed_suffixes = {
+            f".{ext.strip().lower().lstrip('.')}" for ext in extensions.split(",") if ext.strip()
+        }
+    else:
+        allowed_suffixes = {'.fit', '.fits', '.fts'}
 
     # Security: ensure path is under DATA_ROOT
     try:
@@ -191,7 +202,9 @@ def browse_directory(path: str = ""):
 
     entries = []
     try:
-        for entry in sorted(resolved.iterdir()):
+        # Descending by name: log/data filenames are date-prefixed, so this
+        # surfaces the most recent night's files first (what users want most often).
+        for entry in sorted(resolved.iterdir(), key=lambda p: p.name, reverse=True):
             try:
                 if entry.is_dir():
                     # Count items in subdirectory (for display)
@@ -205,7 +218,7 @@ def browse_directory(path: str = ""):
                         "type": "directory",
                         "children_count": child_count
                     })
-                elif entry.suffix.lower() in ['.fit', '.fits', '.fts']:
+                elif entry.suffix.lower() in allowed_suffixes:
                     entries.append({
                         "name": entry.name,
                         "path": str(entry),
@@ -222,6 +235,47 @@ def browse_directory(path: str = ""):
         "path": str(resolved),
         "parent": str(resolved.parent) if resolved != DATA_ROOT else None,
         "entries": entries
+    }
+
+
+@app.get('/read_file')
+def read_file(path: str):
+    """
+    Read a text file's content by absolute path, for "sticky" file selections
+    on the log analyzer pages (NINA log, PHD2 debug log, session metadata
+    files). Restricted to paths under DATA_ROOT, same as /browse.
+    """
+    try:
+        resolved = Path(path).resolve()
+
+        if not str(resolved).startswith(str(DATA_ROOT)):
+            raise HTTPException(
+                status_code=403,
+                detail=f"Access denied: path must be under {DATA_ROOT}",
+            )
+    except Exception as e:
+        if isinstance(e, HTTPException):
+            raise
+        raise HTTPException(status_code=400, detail=f"Invalid path: {e}")
+
+    if not resolved.exists():
+        raise HTTPException(status_code=404, detail=f"File not found: {path}")
+
+    if not resolved.is_file():
+        raise HTTPException(status_code=400, detail=f"Path is not a file: {path}")
+
+    try:
+        content = resolved.read_text(encoding='utf-8', errors='replace')
+    except (PermissionError, OSError) as e:
+        raise HTTPException(status_code=403, detail=f"Could not read file: {e}")
+
+    stat = resolved.stat()
+    return {
+        "path": str(resolved),
+        "name": resolved.name,
+        "content": content,
+        "size": stat.st_size,
+        "modified": stat.st_mtime,
     }
 
 
@@ -670,6 +724,7 @@ async def analyze_session_upload(
             nina_log_content=nina_log_content,
             phd2_debug_log_content=phd2_debug_log_content,
             session_metadata=session_metadata,
+            phd2_debug_filename=phd2_debug_filename,
         )
 
         logger.info(f"Session analysis complete: success={result.success}, frames={len(result.frames)}")
